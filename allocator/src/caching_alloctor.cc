@@ -215,6 +215,8 @@ MemBlock *StreamFreeList::PopBlock(bool is_small, size_t nbytes,
     block = optimal_block;
     iter = optimal_iter;
   }
+  LOG(INFO)  << "is small " << block->is_small << "free_list " << free_list.size();
+  block->is_free = false;
   free_list.erase(iter);
   if (block->nbytes > nbytes) {
     auto *split_block =
@@ -240,6 +242,7 @@ MemBlock *StreamFreeList::PushBlock(MemBlock *block) {
       prev_block && prev_block->is_free &&
       prev_block->is_small == block->is_small &&
       prev_block->stream == current_stream_) {
+    LOG(INFO)  << "is small " << block->is_small << "free_list " << free_list.size();
     free_list.erase(prev_block->iter_free_block_list);
     block = stream_block_list_.MergeMemEntry(prev_block, block);
   }
@@ -247,12 +250,14 @@ MemBlock *StreamFreeList::PushBlock(MemBlock *block) {
       next_block && next_block->is_free &&
       next_block->is_small == block->is_small &&
       next_block->stream == current_stream_) {
+    LOG(INFO)  << "is small " << block->is_small << "free_list " << free_list.size();
     free_list.erase(next_block->iter_free_block_list);
     block = stream_block_list_.MergeMemEntry(block, next_block);
   }
 
    block->iter_free_block_list =
       free_list.insert(std::make_pair(block->nbytes, shm_handle{block, shared_memory_}));
+    LOG(INFO)  << "is small " << block->is_small << "free_list " << free_list.size();
   return block;
 }
 
@@ -340,7 +345,7 @@ MemBlock *CachingAllocator::Alloc(size_t nbytes, cudaStream_t cuda_stream,
   }
   if (block == nullptr && try_expand_VA) {
     block = stream_context.stream_block_list.CreateEntryExpandVA(nbytes);
-    // LOG(INFO) << block;
+    LOG(INFO) << block;
     stream_context.stream_free_list.PushBlock(block);
     block = AllocWithContext(nbytes, stream_context);
     // LOG(INFO) << block;

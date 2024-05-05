@@ -129,6 +129,8 @@ public:
                   MappingRegion &mapping_region,
                   bip_list<shm_handle<MemBlock>> &all_block_list,
                   size_t small_block_nbytes);
+  StreamBlockList& operator=(const StreamBlockList&) = delete;
+  StreamBlockList(const StreamBlockList&) = delete;
 
   MemBlock *CreateEntryExpandVA(size_t nbytes);
 
@@ -199,6 +201,9 @@ public:
   StreamFreeList(SharedMemory &shared_memory, cudaStream_t cuda_stream,
                  MappingRegion &mapping_region,
                  StreamBlockList &stream_block_list);
+  
+  StreamFreeList& operator=(const StreamFreeList&) = delete;
+  StreamFreeList(const StreamFreeList&) = delete;
 
   MemBlock *PopBlock(bool is_small, size_t nbytes, size_t find_optimal_retry);
 

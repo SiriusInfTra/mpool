@@ -1,5 +1,5 @@
 set(ALLOCATOR_SRC
-    src/freelist.cc
+    src/caching_alloctor.cc
 )
 
 add_library(allocator ${ALLOCATOR_SRC})
@@ -9,3 +9,6 @@ target_include_directories(allocator PUBLIC include)
 
 add_executable(async_malloc test/async_malloc.cu)
 target_link_libraries(async_malloc allocator)
+
+add_executable(caching_alloctor_test test/caching_alloctor_test.cc)
+target_link_libraries(caching_alloctor_test allocator)

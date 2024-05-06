@@ -141,19 +141,23 @@ public:
     std::vector<index_t> release_pages;
     auto iter = block_list.begin();
     auto block = iter->ptr(shared_memory_);
-    for (index_t mapping_index = 0; mapping_index < mapping_pages_.size();
-         ++mapping_index) {
+    for (index_t mapping_index = 0; mapping_index < mapping_pages_.size(); ) {
       if (mapping_pages_[mapping_index] == nullptr) {
+        mapping_index++;
         continue;
       }
-      /* 1. skip checked block by moving iter to the first block with
-       * mapping_index-th page. */
+
+      if (index_t block_mapping_index_begin = GetMappingPage(block->addr_offset); block_mapping_index_begin > mapping_index) {
+        mapping_index = block_mapping_index_begin;
+        continue;
+      }
+
       while (GetMappingPage(block->addr_offset + block->nbytes - 1) < mapping_index) {
         iter++;
         block = iter->ptr(shared_memory_);
       }
-      CHECK_LE(GetMappingPage(block->addr_offset), mapping_index);
-
+      // CHECK_LE(GetMappingPage(block->addr_offset), mapping_index);
+      
       /* 2. check whether mapping_index-th is free. */
       bool page_is_free = true;
       std::vector<MemBlock *> blocks_with_pages;
@@ -163,20 +167,27 @@ public:
           page_is_free = false;
           break;
         }
-        if (GetMappingPage(block->addr_offset + block->nbytes - 1) >= mapping_index) {
+        if (block->addr_offset + block->nbytes - 1 < mapping_index * mem_block_nbytes + mem_block_nbytes - 1) {
+          iter++;
+          if (iter != block_list.cend()) {
+            block = iter->ptr(shared_memory_);
+          } else {
+            break;
+          }
+
+        } else {
           break;
         }
-        iter++;
-        block = iter->ptr(shared_memory_);
       }
-
       /* 3. release page if free and update block's unalloc page. */
       if (page_is_free) {
         release_pages.push_back(mapping_index);
-        for (auto block : blocks_with_pages) {
-          block->unalloc_pages++;
+        for (auto block1 : blocks_with_pages) {
+          block1->unalloc_pages++;
         }
       }
+
+      mapping_index++;
     }
     UnMapPages(release_pages);
   }
@@ -208,7 +219,7 @@ public:
 
   MemBlock *GetNextEntry(MemBlock *entry);
 
-  MemBlock *SplitEntry(MemBlock *origin_entry, size_t remain);
+  MemBlock *SplitBlock(MemBlock *origin_entry, size_t remain);
 
   MemBlock *MergeMemEntry(MemBlock *first_block, MemBlock *secound_block);
 

@@ -97,7 +97,9 @@ int32_t MappingRegion::GetUnallocPages(ptrdiff_t addr_offset, size_t nbytes) {
       unalloc_pages++;
     }
   }
-  DCHECK_LE(unalloc_pages, (nbytes + mem_block_nbytes - 1) / mem_block_nbytes + 1) << ByteDisplay(nbytes);
+  DCHECK_LE(unalloc_pages,
+            (nbytes + mem_block_nbytes - 1) / mem_block_nbytes + 1)
+      << ByteDisplay(nbytes);
   return unalloc_pages;
 }
 
@@ -150,7 +152,7 @@ MemBlock *StreamBlockList::GetNextEntry(MemBlock *entry) {
   return iter->ptr(shared_memory_);
 }
 
-MemBlock *StreamBlockList::SplitEntry(MemBlock *origin_entry, size_t remain) {
+MemBlock *StreamBlockList::SplitBlock(MemBlock *origin_entry, size_t remain) {
   CHECK_GT(origin_entry->nbytes, remain);
   /* [origin: remain] [insert_after_entry: nbytes - remain] */
   auto *insert_after_entry = new (shared_memory_->allocate(sizeof(MemBlock)))
@@ -239,7 +241,7 @@ MemBlock *StreamFreeList::PopBlock(bool is_small, size_t nbytes,
   free_list.erase(iter);
   if (block->nbytes > nbytes) {
     auto *split_block =
-        stream_block_list_.SplitEntry(block, block->nbytes - nbytes);
+        stream_block_list_.SplitBlock(block, nbytes);
     PushBlock(split_block);
     // split_block->iter_free_block_list = free_list.insert(std::make_pair(
     // split_block->nbytes, shm_handle{split_block, shared_memory_}));
@@ -261,6 +263,7 @@ MemBlock *StreamFreeList::PushBlock(MemBlock *block) {
   if (auto prev_block = stream_block_list_.GetPrevEntry(block);
       prev_block && prev_block->is_free &&
       prev_block->is_small == block->is_small &&
+      prev_block->unalloc_pages == 0 &&
       prev_block->stream == current_stream_) {
     // LOG(INFO)  << "is small " << block->is_small << "free_list " <<
     // free_list.size();
@@ -270,6 +273,7 @@ MemBlock *StreamFreeList::PushBlock(MemBlock *block) {
   if (auto next_block = stream_block_list_.GetNextEntry(block);
       next_block && next_block->is_free &&
       next_block->is_small == block->is_small &&
+      next_block->unalloc_pages == 0 &&
       next_block->stream == current_stream_) {
     // LOG(INFO)  << "is small " << block->is_small << "free_list " <<
     // free_list.size();
@@ -420,11 +424,13 @@ void CachingAllocator::Free(MemBlock *block) {
   }
   CHECK(!CHECK_STATE || CheckState());
 }
-void CachingAllocator::EmptyCache(__attribute__((unused)) cudaStream_t cuda_stream) {
+void CachingAllocator::EmptyCache(__attribute__((unused))
+                                  cudaStream_t cuda_stream) {
   LOG_IF(INFO, VERBOSE) << config.log_prefix << "Release free physical memory.";
   // auto &context = GetStreamContext(cuda_stream);
   // context.stream_block_list.EmptyCache();
   mapping_region_.EmptyCache(all_block_list_);
+  CHECK(!CHECK_STATE || CheckState());
 };
 
 void StreamBlockList::DumpStreamBlockList(std::ostream &out) {
@@ -470,8 +476,11 @@ void StreamBlockList::EnsureBlockWithPage(MemBlock *block) {
     next_block->unalloc_pages--;
     // DCHECK_EQ(next_block->unalloc_pages,
     //          mapping_region_.GetUnallocPages(next_block->addr_offset,
-    //                                          next_block->nbytes)) << next_block;
-    // next_block->unalloc_pages = mapping_region_.GetUnallocPages(next_block->addr_offset, next_block->nbytes);
+    //                                          next_block->nbytes)) <<
+    //                                          next_block;
+    // next_block->unalloc_pages =
+    // mapping_region_.GetUnallocPages(next_block->addr_offset,
+    // next_block->nbytes);
   }
   for (auto *prev_block = GetPrevEntry(block);
        prev_block != nullptr &&
@@ -483,8 +492,11 @@ void StreamBlockList::EnsureBlockWithPage(MemBlock *block) {
     prev_block->unalloc_pages--;
     // DCHECK_EQ(prev_block->unalloc_pages,
     //          mapping_region_.GetUnallocPages(prev_block->addr_offset,
-    //                                          prev_block->nbytes)) << prev_block;
-    // prev_block->unalloc_pages = mapping_region_.GetUnallocPages(prev_block->unalloc_pages, prev_block->nbytes);
+    //                                          prev_block->nbytes)) <<
+    //                                          prev_block;
+    // prev_block->unalloc_pages =
+    // mapping_region_.GetUnallocPages(prev_block->unalloc_pages,
+    // prev_block->nbytes);
   }
 }
 } // namespace mpool

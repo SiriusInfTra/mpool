@@ -77,9 +77,9 @@ void run(const PagesPoolConf &config, const std::string &name, int seed) {
 
     for (size_t k = 0; k < 1000; ++k) {
         DLOG(INFO) << "k = " << k << " usage = " << ByteDisplay(WrapMemBlock::GetTotalNBytes()) << " | " << caching_allocator_config.belong.GetPagesNum() << ".";
-        size_t nbytes = std::uniform_int_distribution<num_t>(32_MB, 1_GB)(rng);
+        size_t nbytes = std::uniform_int_distribution<num_t>(1, 1_GB)(rng);
         // auto lock = page_pool.Lock();
-        if (WrapMemBlock::GetTotalNBytes() + nbytes > 6_GB) {
+        if (WrapMemBlock::GetTotalNBytes() + nbytes > 11_GB) {
             std::shuffle(own_pages.begin(), own_pages.end(), rng);
             own_pages.clear();
             caching_allocator.EmptyCache(0);

@@ -4,11 +4,11 @@
 #include <glog/logging.h>
 namespace mpool {
 
-unsigned EntryList::GetUnallocPages(ptrdiff_t addr_offset, size_t nbytes) {
+int32_t EntryList::GetUnallocPages(ptrdiff_t addr_offset, size_t nbytes) {
     index_t index_begin = addr_offset / MEM_BLOCK_NBYTES;
     index_t index_end =
         (addr_offset + nbytes + MEM_BLOCK_NBYTES - 1) / MEM_BLOCK_NBYTES;
-    unsigned unalloc_pages = 0;
+    int32_t unalloc_pages = 0;
     for (index_t index = index_begin; index < index_end; ++index) {
         if (mapped_mem_list_[index] == nullptr) {
             unalloc_pages++;

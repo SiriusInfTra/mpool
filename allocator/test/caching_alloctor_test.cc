@@ -1,5 +1,6 @@
 
 #include "shm.h"
+#include "util.h"
 #include <chrono>
 #include <memory>
 #include <pages_pool.h>
@@ -71,17 +72,17 @@ void run(const PagesPoolConf &config, const std::string &name, int seed) {
     CachingAllocator caching_allocator{shared_memory, page_pool, caching_allocator_config, true};
 
     std::mt19937 rng{static_cast<unsigned long>(seed)};
-    auto belong = page_pool.GetBelongRegistry().RegisterBelong(name);
     
     std::vector<std::shared_ptr<WrapMemBlock>> own_pages;
 
     for (size_t k = 0; k < 1000; ++k) {
-        DLOG(INFO) << "k = " << k << " usage = " << belong.GetPagesNum() << ".";
-        size_t nbytes = std::uniform_int_distribution<num_t>(1, 1_GB)(rng);
-        auto lock = page_pool.Lock();
-        if (WrapMemBlock::GetTotalNBytes() + nbytes > 9_GB) {
+        DLOG(INFO) << "k = " << k << " usage = " << ByteDisplay(WrapMemBlock::GetTotalNBytes()) << " | " << caching_allocator_config.belong.GetPagesNum() << ".";
+        size_t nbytes = std::uniform_int_distribution<num_t>(32_MB, 1_GB)(rng);
+        // auto lock = page_pool.Lock();
+        if (WrapMemBlock::GetTotalNBytes() + nbytes > 6_GB) {
             std::shuffle(own_pages.begin(), own_pages.end(), rng);
             own_pages.clear();
+            caching_allocator.EmptyCache(0);
         } else {
             own_pages.push_back(std::make_shared<WrapMemBlock>(nbytes, caching_allocator));
         }

@@ -78,6 +78,10 @@ std::vector<index_t> PagesPool::AllocDisPages(Belong blg, num_t num_req, bip::sc
     for (size_t k = 0; k < num_req; ++k) {
         index_t index = free_list_.FindBestFit(1);
         if (index == FreeList::INVALID_POS) { break; }
+        auto &phy_page = phy_pages[index];
+        free_list_.ClaimPages(index);
+        CHECK_EQ(*phy_page.belong, belong_registery_.GetFreeBelong());
+        *phy_page.belong = blg;
         ret.push_back(index);
     }
     blg.impl_->pages_num.fetch_add(ret.size(), std::memory_order_relaxed);

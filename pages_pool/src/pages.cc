@@ -189,7 +189,7 @@ void HandleTransfer::InitMaster(Belong kFree) {
     }
     auto end = std::chrono::steady_clock::now();
     LOG(INFO) << "[mempool] Alloc " 
-        << phy_mem_list_.size() << " x " << ByteDisplay(phy_pages_num_) 
+        << phy_mem_list_.size() << " x " << ByteDisplay(phy_pages_nbytes_) 
         << " block(s) costs " 
         << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << " ms.";
     vmm_export_thread_.reset(new std::thread([&] { ExportWorker(); }));

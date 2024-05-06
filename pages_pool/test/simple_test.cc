@@ -76,7 +76,7 @@ void run(const PagesPoolConf &conf, const std::string &name, int seed) {
         }
         lock.unlock();
         std::this_thread::sleep_for(
-            std::chrono::milliseconds(std::uniform_int_distribution<unsigned long>(10, 50)(rng)));
+            std::chrono::milliseconds(std::uniform_int_distribution<int32_t long>(10, 50)(rng)));
         CHECK_EQ(belong.GetPagesNum(), own_pages.size());
         
     }

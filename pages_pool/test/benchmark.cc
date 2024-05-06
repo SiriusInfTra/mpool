@@ -25,7 +25,7 @@ public:
 };
 
 template<typename T>
-void RandomInit(T &container, size_t len, unsigned long seed) {
+void RandomInit(T &container, size_t len, int32_t long seed) {
     std::mt19937 gen(seed);
     std::uniform_int_distribution<> dist(0, 1);
     for (size_t k = 0; k < len; ++k) {

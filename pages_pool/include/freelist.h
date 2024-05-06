@@ -56,6 +56,10 @@ public:
         std::fill(alloc_bitmap_->begin() + index, alloc_bitmap_->begin() + index + len, true);
     }
 
+    void ClaimPages(index_t index) {
+        (*alloc_bitmap_)[index] = static_cast<int>(true);
+    }
+
     void ReleasePages(index_t index, num_t len) {
         if (len == 1) {
             (*alloc_bitmap_)[index] = false;

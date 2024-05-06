@@ -19,7 +19,7 @@ const constexpr bool ENABLE_CHECK_U_OP = false;
 struct MemEntry {
     ptrdiff_t    addr_offset;
     size_t       nbytes;
-    unsigned     unalloc_pages;
+    int32_t     unalloc_pages;
     
     bool    is_free;
     bool    is_small;
@@ -59,7 +59,7 @@ private:
     bip_list<shm_handle<MemEntry>>              *entry_list_;
     bip_map<ptrdiff_t, shm_handle<MemEntry>>    *entry_by_addr_;
 
-    unsigned GetUnallocPages(ptrdiff_t addr_offset, size_t nbytes);
+    int32_t GetUnallocPages(ptrdiff_t addr_offset, size_t nbytes);
 
   public:
     EntryList(size_t page_nbytes, const std::string &log_prefix, Belong belong, bip_shm &shm, 

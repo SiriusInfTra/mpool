@@ -295,11 +295,11 @@ MemBlock *StreamFreeList::MaybeMergeAdj(MemBlock *entry) {
   CHECK(entry->is_free) << entry;
   CHECK(entry->is_small) << entry;
   auto *prev_block = stream_block_list_.GetPrevEntry(entry);
-  DCHECK(prev_block == nullptr || !prev_block->is_free ||
+  DCHECK(prev_block == nullptr || !prev_block->is_free || !prev_block->is_small ||
          prev_block->unalloc_pages > 0)
       << prev_block;
   auto *next_block = stream_block_list_.GetNextEntry(entry);
-  DCHECK(next_block == nullptr || !next_block->is_free ||
+  DCHECK(next_block == nullptr || !next_block->is_free || !next_block->is_small ||
          next_block->unalloc_pages > 0)
       << next_block;
   bool put_free_list_large = true;
@@ -308,10 +308,10 @@ MemBlock *StreamFreeList::MaybeMergeAdj(MemBlock *entry) {
     if (adj_block == nullptr) {
       continue;
     }
-    put_free_list_large &= adj_block->is_small;
+    put_free_list_large &= !adj_block->is_small;
     total_nbytes += adj_block->nbytes;
   }
-  if (put_free_list_large && total_nbytes >= 2_MB) {
+  if (put_free_list_large && total_nbytes >= 2_MB ) {
     entry = PopBlock(entry);
     entry->is_small = false;
     entry = PushBlock(entry);

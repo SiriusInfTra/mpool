@@ -30,6 +30,7 @@ MappingRegion::MappingPageRange(ptrdiff_t addr_offset, size_t nbytes) const {
 }
 
 std::vector<index_t> MappingRegion::EnsureBlockWithPage(const MemBlock *block) {
+  CHECK_LE(block->addr_offset + block->nbytes, mem_block_nbytes * mem_block_num * va_range_scale);
   /* 1. check whether the block is already mapped. */
   auto [index_begin, index_end] =
       MappingPageRange(block->addr_offset, block->nbytes);

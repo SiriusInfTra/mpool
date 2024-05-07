@@ -431,6 +431,10 @@ void CachingAllocator::EmptyCache(__attribute__((unused))
   // auto &context = GetStreamContext(cuda_stream);
   // context.stream_block_list.EmptyCache();
   mapping_region_.EmptyCache(all_block_list_);
+  for (auto &[_, handle] : stream_context_map_) {
+    auto stream_context = handle.ptr(shared_memory_);
+    stream_context->MoveFreeBlockTo(global_stream_context_);
+  }
   CHECK(!CHECK_STATE || CheckState());
 };
 

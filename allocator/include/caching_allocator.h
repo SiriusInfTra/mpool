@@ -195,6 +195,7 @@ public:
 };
 
 class StreamBlockList {
+  friend class StreamContext;
 private:
   cudaStream_t current_stream_;
   MappingRegion &mapping_region_;
@@ -222,6 +223,10 @@ public:
   MemBlock *SplitBlock(MemBlock *origin_entry, size_t remain);
 
   MemBlock *MergeMemEntry(MemBlock *first_block, MemBlock *secound_block);
+
+
+
+
 
   std::pair<bip_list<shm_handle<MemBlock>>::const_iterator,
             bip_list<shm_handle<MemBlock>>::const_iterator>
@@ -287,51 +292,10 @@ public:
     return true;
   }
 
-  void EmptyCache() {
-    std::vector<index_t> release_pages;
-    auto iter = stream_block_list_.begin();
-    auto block = iter->ptr(shared_memory_);
-    for (index_t mapping_index = 0; mapping_index < mapping_region_.mem_block_num;
-         ++mapping_index) {
-      if (mapping_region_.IsMappingIndexWithPage(mapping_index)) {
-        continue;
-      }
-      /* 1. skip checked block by moving iter to the first block with
-       * mapping_index-th page. */
-      while (mapping_region_.GetMappingPage(block->addr_offset) <
-             mapping_index) {
-        iter++;
-        block = iter->ptr(shared_memory_);
-      }
-      CHECK_LT(
-          mapping_region_.GetMappingPage(block->addr_offset + block->nbytes),
-          mapping_index);
-      /* 2. check whether mapping_index-th is free. */
-      bool page_is_free = true;
-      std::vector<MemBlock *> blocks_with_pages;
-      do {
-        blocks_with_pages.push_back(block);
-        if (!block->is_free) {
-          page_is_free = false;
-          break;
-        }
-        iter++;
-        block = iter->ptr(shared_memory_);
-      } while (mapping_region_.GetMappingPage(
-                   block->addr_offset + block->nbytes) < mapping_index + 1);
-      /* 3. release page if free and update block's unalloc page. */
-      if (page_is_free) {
-        release_pages.push_back(mapping_index);
-        for (auto block : blocks_with_pages) {
-          block->unalloc_pages++;
-        }
-      }
-    }
-    mapping_region_.UnMapPages(release_pages);
-  }
 };
 
 class StreamFreeList {
+  friend class StreamContext;
   static const constexpr size_t LARGE = false;
   static const constexpr size_t SMALL = true;
 
@@ -359,6 +323,7 @@ public:
   MemBlock *PushBlock(MemBlock *block);
 
   MemBlock *MaybeMergeAdj(MemBlock *entry);
+
 
   bool CheckState() {
     std::unordered_set<MemBlock *> free_blocks;
@@ -397,8 +362,9 @@ public:
   void DumpFreeBlockList(bool is_small, std::ostream &out = std::cout);
 };
 
-struct StreamContext {
-  cudaStream_t cuda_stream;
+class StreamContext {
+public:
+  const cudaStream_t cuda_stream;
   StreamBlockList stream_block_list;
   StreamFreeList stream_free_list;
 
@@ -413,8 +379,44 @@ struct StreamContext {
                          stream_block_list} {}
   StreamContext &operator=(const StreamContext &) = delete;
   StreamContext(const StreamContext &) = delete;
+
+  void MoveFreeBlockTo(StreamContext &other_context) {
+    /* 1. fast return */
+    if (other_context.stream_block_list.stream_block_list_.empty()) {
+      return;
+    }
+
+    /* 2. make sure this->stream_block_list.back().addr_offset > other->stream_block_list.back().addr_offset */
+    MemBlock last_mem_block{.addr_offset = std::numeric_limits<ptrdiff_t>::max(),
+                            .nbytes = 0};
+    this->stream_block_list.stream_block_list_.insert(this->stream_block_list.stream_block_list_.cend(), shm_handle{&last_mem_block, this->stream_block_list.shared_memory_});
+
+    /* merge two stream_*/
+    auto iter = this->stream_block_list.stream_block_list_.begin();
+    auto *block = iter->ptr(this->stream_block_list.shared_memory_);
+    for (auto iter_other = other_context.stream_block_list.stream_block_list_.begin(); iter_other != other_context.stream_block_list.stream_block_list_.cend();) {
+      auto *block_other = iter_other->ptr(this->stream_block_list.shared_memory_);
+      if (block_other->is_free) {
+        block_other->stream = cuda_stream;
+        while (block->addr_offset < block_other->addr_offset) {
+          ++iter;
+          block = iter->ptr(this->stream_block_list.shared_memory_);
+        }
+        block_other->iter_stream_block_list = this->stream_block_list.stream_block_list_.insert(iter, *iter_other);
+        other_context.stream_free_list.PopBlock(block);
+        this->stream_free_list.PushBlock(block);
+        iter_other = this->stream_block_list.stream_block_list_.erase(block_other->iter_stream_block_list);
+      } else {
+        ++iter_other;
+      }
+    }
+
+    /* remove last fake memory block */
+    CHECK_EQ(this->stream_block_list.stream_block_list_.back().ptr(this->stream_block_list.shared_memory_), &last_mem_block);
+    this->stream_block_list.stream_block_list_.erase(std::prev(this->stream_block_list.stream_block_list_.cend()));
+  }
 };
-;
+
 
 class CachingAllocator {
 public:

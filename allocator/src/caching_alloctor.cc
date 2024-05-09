@@ -3,6 +3,7 @@
 #include <caching_allocator.h>
 
 #include <glog/logging.h>
+#include <iterator>
 #include <ostream>
 
 namespace mpool {
@@ -28,67 +29,6 @@ MappingRegion::MappingPageRange(ptrdiff_t addr_offset, size_t nbytes) const {
       (addr_offset + nbytes + mem_block_nbytes - 1) / mem_block_nbytes;
   return {index_begin, index_end};
 }
-
-std::vector<index_t> MappingRegion::EnsureBlockWithPage(const MemBlock *block) {
-  CHECK_LE(block->addr_offset + block->nbytes, mem_block_nbytes * mem_block_num * va_range_scale);
-  /* 1. check whether the block is already mapped. */
-  auto [index_begin, index_end] =
-      MappingPageRange(block->addr_offset, block->nbytes);
-  if (block->unalloc_pages == 0) {
-    return {};
-  }
-  /* 2. find missing pages mapping index. */
-  std::vector<index_t> missing_pages_mapping_index;
-  if (mapping_pages_.size() < index_end) {
-    mapping_pages_.resize(index_end, nullptr);
-  }
-  for (index_t index = index_begin; index < index_end; ++index) {
-    if (mapping_pages_[index] == nullptr) {
-      missing_pages_mapping_index.push_back(index);
-    }
-  }
-  CHECK_EQ(block->unalloc_pages, missing_pages_mapping_index.size());
-
-  /* 3. alloc physical pages */
-  std::vector<index_t> assign_phy_pages_index;
-  {
-    auto lock = page_pool_.Lock();
-    assign_phy_pages_index = page_pool_.AllocDisPages(
-        belong, missing_pages_mapping_index.size(), lock);
-  }
-  CHECK_EQ(assign_phy_pages_index.size(), missing_pages_mapping_index.size());
-  for (size_t k = 0; k < missing_pages_mapping_index.size(); ++k) {
-    CU_CALL(cuMemMap(
-        reinterpret_cast<CUdeviceptr>(
-            base_ptr_ + missing_pages_mapping_index[k] * mem_block_nbytes),
-        mem_block_nbytes, 0,
-        page_pool_.PagesView()[assign_phy_pages_index[k]].cu_handle, 0));
-    mapping_pages_[missing_pages_mapping_index[k]] =
-        &page_pool_.PagesView()[assign_phy_pages_index[k]];
-  }
-
-  /* 4. modify page table */
-  ptrdiff_t addr_offset;
-  size_t nbytes;
-  if (std::adjacent_find(missing_pages_mapping_index.begin(),
-                         missing_pages_mapping_index.end(),
-                         [](index_t a, index_t b) { return b != a + 1; }) ==
-      missing_pages_mapping_index.end()) {
-    addr_offset = missing_pages_mapping_index.front() * mem_block_nbytes;
-    nbytes = missing_pages_mapping_index.size() * mem_block_nbytes;
-  } else {
-    addr_offset = index_begin * mem_block_nbytes;
-    nbytes = (index_end - index_begin) * mem_block_nbytes;
-  }
-  CUmemAccessDesc acc_desc = {
-      .location = {.type = CU_MEM_LOCATION_TYPE_DEVICE, .id = 0},
-      .flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE};
-  CU_CALL(cuMemSetAccess(reinterpret_cast<CUdeviceptr>(base_ptr_ + addr_offset),
-                         nbytes, &acc_desc, 1));
-
-  return missing_pages_mapping_index;
-}
-
 int32_t MappingRegion::GetUnallocPages(ptrdiff_t addr_offset, size_t nbytes) {
   auto [index_begin, index_end] = MappingPageRange(addr_offset, nbytes);
   size_t ub = std::min(index_end, mapping_pages_.size());
@@ -383,7 +323,7 @@ MemBlock *CachingAllocator::Alloc(size_t nbytes, cudaStream_t cuda_stream,
   }
   CHECK(!MORE_CHECK_STATE || CheckState());
   if (block != nullptr) {
-    stream_context.stream_block_list.EnsureBlockWithPage(block);
+    mapping_region_.EnsureBlockWithPage(block, all_block_list_);
   }
   CHECK(!CHECK_STATE || CheckState());
   return block;
@@ -464,44 +404,96 @@ void StreamFreeList::DumpFreeBlockList(bool is_small, std::ostream &out) {
     stream_block_list_.DumpMemBlock(out, block);
   }
 }
-void StreamBlockList::EnsureBlockWithPage(MemBlock *block) {
+
+void MappingRegion::EnsureBlockWithPage(
+    MemBlock *block, bip_list<shm_handle<MemBlock>> &all_block_list) {
+  CHECK_LE(block->addr_offset + block->nbytes,
+           mem_block_nbytes * mem_block_num * va_range_scale);
+  /* 1. check whether the block is already mapped. */
   if (block->unalloc_pages == 0) {
     return;
   }
-  auto missing_pages_mapping_index = mapping_region_.EnsureBlockWithPage(block);
-  CHECK(!missing_pages_mapping_index.empty())
+  auto [index_begin, index_end] =
+      MappingPageRange(block->addr_offset, block->nbytes);
+  
+  /* 2. find missing pages mapping index. */
+  std::vector<index_t> missing_pages_mapping_index;
+  if (mapping_pages_.size() < index_end) {
+    mapping_pages_.resize(index_end, nullptr);
+  }
+  for (index_t index = index_begin; index < index_end; ++index) {
+    if (mapping_pages_[index] == nullptr) {
+      missing_pages_mapping_index.push_back(index);
+    }
+  }
+  CHECK_EQ(block->unalloc_pages, missing_pages_mapping_index.size());
+
+  /* 3. alloc physical pages */
+  std::vector<index_t> assign_phy_pages_index;
+  {
+    auto lock = page_pool_.Lock();
+    assign_phy_pages_index = page_pool_.AllocDisPages(
+        belong, missing_pages_mapping_index.size(), lock);
+  }
+  CHECK_EQ(assign_phy_pages_index.size(), missing_pages_mapping_index.size());
+  for (size_t k = 0; k < missing_pages_mapping_index.size(); ++k) {
+    CU_CALL(cuMemMap(
+        reinterpret_cast<CUdeviceptr>(
+            base_ptr_ + missing_pages_mapping_index[k] * mem_block_nbytes),
+        mem_block_nbytes, 0,
+        page_pool_.PagesView()[assign_phy_pages_index[k]].cu_handle, 0));
+    mapping_pages_[missing_pages_mapping_index[k]] =
+        &page_pool_.PagesView()[assign_phy_pages_index[k]];
+  }
+
+  /* 4. modify page table */
+  ptrdiff_t addr_offset;
+  size_t nbytes;
+  if (std::adjacent_find(missing_pages_mapping_index.begin(),
+                         missing_pages_mapping_index.end(),
+                         [](index_t a, index_t b) { return b != a + 1; }) ==
+      missing_pages_mapping_index.end()) {
+    addr_offset = missing_pages_mapping_index.front() * mem_block_nbytes;
+    nbytes = missing_pages_mapping_index.size() * mem_block_nbytes;
+  } else {
+    addr_offset = index_begin * mem_block_nbytes;
+    nbytes = (index_end - index_begin) * mem_block_nbytes;
+  }
+  CUmemAccessDesc acc_desc = {
+      .location = {.type = CU_MEM_LOCATION_TYPE_DEVICE, .id = 0},
+      .flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE};
+  CU_CALL(cuMemSetAccess(reinterpret_cast<CUdeviceptr>(base_ptr_ + addr_offset),
+                         nbytes, &acc_desc, 1));
+  
+  /* 5. update memory block unalloc_pages flag */
+    CHECK(!missing_pages_mapping_index.empty())
       << missing_pages_mapping_index.size();
   block->unalloc_pages = 0;
-  for (auto *next_block = GetNextEntry(block);
-       next_block != nullptr &&
-       mapping_region_.GetMappingPage(next_block->addr_offset) <=
-           missing_pages_mapping_index.back();
-       next_block = GetNextEntry(next_block)) {
+  auto next_iter = std::next(block->iter_all_block_list);
+  while (next_iter != all_block_list.cend()) {
+    auto *next_block = next_iter->ptr(shared_memory_);
+    if (GetMappingPage(next_block->addr_offset) > missing_pages_mapping_index.back()) {
+      break;
+    }
     DCHECK_GE(next_block->unalloc_pages, 1);
     next_block->unalloc_pages--;
-    // DCHECK_EQ(next_block->unalloc_pages,
-    //          mapping_region_.GetUnallocPages(next_block->addr_offset,
-    //                                          next_block->nbytes)) <<
-    //                                          next_block;
-    // next_block->unalloc_pages =
-    // mapping_region_.GetUnallocPages(next_block->addr_offset,
-    // next_block->nbytes);
+    DCHECK_EQ(next_block->unalloc_pages, GetUnallocPages(next_block->addr_offset,
+                                             next_block->nbytes)) <<
+                                             next_block;
+    next_iter++;
   }
-  for (auto *prev_block = GetPrevEntry(block);
-       prev_block != nullptr &&
-       mapping_region_.GetMappingPage(prev_block->addr_offset +
-                                      prev_block->nbytes - 1) >=
-           missing_pages_mapping_index.front();
-       prev_block = GetPrevEntry(prev_block)) {
+  auto prev_iter = block->iter_all_block_list;
+  while (prev_iter != all_block_list.cbegin()) {
+    --prev_iter;
+    auto *prev_block = prev_iter->ptr(shared_memory_);
+    if (GetMappingPage(prev_block->addr_offset + prev_block->nbytes - 1) < missing_pages_mapping_index.front()) {
+      break;
+    }
     DCHECK_GE(prev_block->unalloc_pages, 1);
     prev_block->unalloc_pages--;
-    // DCHECK_EQ(prev_block->unalloc_pages,
-    //          mapping_region_.GetUnallocPages(prev_block->addr_offset,
-    //                                          prev_block->nbytes)) <<
-    //                                          prev_block;
-    // prev_block->unalloc_pages =
-    // mapping_region_.GetUnallocPages(prev_block->unalloc_pages,
-    // prev_block->nbytes);
+    DCHECK_EQ(prev_block->unalloc_pages, GetUnallocPages(prev_block->addr_offset,
+                                             prev_block->nbytes)) <<
+                                             prev_block;
   }
 }
 } // namespace mpool

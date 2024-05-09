@@ -5,17 +5,18 @@
 #include <pages_pool.h>
 #include <shm.h>
 #include <util.h>
+#include <mem_block.h>
 
 #include <cstddef>
 #include <iterator>
 #include <string>
 #include <unordered_set>
 
-#include <boost/container/list.hpp>
-#include <boost/container/map.hpp>
+
 #include <boost/unordered_map.hpp>
 
 #include <cuda_runtime_api.h>
+
 
 namespace mpool {
 
@@ -34,38 +35,6 @@ struct CachingAllocatorConfig {
   size_t align_nbytes;
 };
 
-struct MemBlock {
-  ptrdiff_t addr_offset;
-  size_t nbytes;
-  cudaStream_t stream;
-  int32_t unalloc_pages;
-  bool is_free;
-  bool is_small;
-
-  bip_list<shm_handle<MemBlock>>::iterator iter_all_block_list;
-  bip_list<shm_handle<MemBlock>>::iterator iter_stream_block_list;
-  bip_multimap<size_t, shm_handle<MemBlock>>::iterator iter_free_block_list;
-};
-
-inline std::ostream &operator<<(std::ostream &out, const MemBlock &block) {
-  out << "MemBlock {"
-      << "addr_offset: " << block.addr_offset << ", "
-      << "nbytes: " << block.nbytes << ", "
-      << "stream: " << block.stream << ", "
-      << "unalloc_pages: " << block.unalloc_pages << ", "
-      << "is_free: " << (block.is_free ? "true" : "false") << ", "
-      << "is_small: " << (block.is_small ? "true" : "false") << "}";
-  return out;
-}
-
-inline std::ostream &operator<<(std::ostream &out, MemBlock *block) {
-  if (block == nullptr) {
-    out << "nullptr";
-  } else {
-    out << *block;
-  }
-  return out;
-}
 
 class MappingRegion {
 public:
@@ -92,7 +61,8 @@ public:
     return addr_offset / mem_block_nbytes;
   }
 
-  std::vector<index_t> EnsureBlockWithPage(const MemBlock *block);
+  void EnsureBlockWithPage(MemBlock *block,
+                           bip_list<shm_handle<MemBlock>> &all_block_list);
 
   int32_t GetUnallocPages(ptrdiff_t addr_offset, size_t nbytes);
 
@@ -233,8 +203,6 @@ public:
   Iterators() const {
     return {stream_block_list_.begin(), stream_block_list_.end()};
   }
-
-  void EnsureBlockWithPage(MemBlock *block);
 
   void DumpMemBlockColumns(std::ostream &out);
   void DumpMemBlock(std::ostream &out, MemBlock *block);

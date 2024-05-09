@@ -1,7 +1,7 @@
 set(PAGES_POOL_SRC
     src/pages_pool.cc
     src/pages.cc
-    src/freelist.cc
+    src/pages_list.cc
     src/belong.cc
 )
 set(PAGES_POOL_TEST

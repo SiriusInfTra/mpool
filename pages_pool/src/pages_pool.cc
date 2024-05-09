@@ -1,5 +1,5 @@
 #include "belong.h"
-#include "freelist.h"
+#include "pages_list.h"
 #include "pages.h"
 #include "shm.h"
 #include "util.h"

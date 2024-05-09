@@ -9,7 +9,7 @@
 #include <shm.h>
 #include <pages.h>
 #include <belong.h>
-#include <freelist.h>
+#include <pages_list.h>
 
 #include <boost/interprocess/interprocess_fwd.hpp>
 #include <boost/interprocess/managed_shared_memory.hpp>

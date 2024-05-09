@@ -1,5 +1,7 @@
 set(ALLOCATOR_SRC
     src/caching_alloctor.cc
+    src/mapping_region.cc
+    src/stream_context.cc
 )
 
 add_library(allocator ${ALLOCATOR_SRC})

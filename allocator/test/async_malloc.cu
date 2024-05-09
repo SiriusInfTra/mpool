@@ -73,7 +73,7 @@ int main1() {
     CUDA_CALL(cudaMemsetAsync(dev_ptr, 0, 32_MB, cu_stream1));
     CU_CALL(cuStreamSynchronize(cu_stream1));
     LOG(INFO) << "finish";
-
+    return 0;
 }
 
 int main() {

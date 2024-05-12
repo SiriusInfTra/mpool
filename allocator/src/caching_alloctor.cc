@@ -15,9 +15,9 @@ namespace mpool {
 MappingRegion::MappingRegion(SharedMemory &shared_memory, PagesPool &page_pool,
                              Belong belong, std::string log_prefix,
                              size_t va_range_scale)
-    : log_prefix(log_prefix), mem_block_nbytes(page_pool.config.PAGE_NBYTES),
-      mem_block_num(page_pool.config.POOL_NBYTES /
-                    page_pool.config.PAGE_NBYTES),
+    : log_prefix(log_prefix), mem_block_nbytes(page_pool.config.page_nbytes),
+      mem_block_num(page_pool.config.pool_nbytes /
+                    page_pool.config.page_nbytes),
       va_range_scale(va_range_scale), belong(belong),
       shared_memory_(shared_memory), page_pool_(page_pool) {
   CU_CALL(cuMemAddressReserve(reinterpret_cast<CUdeviceptr *>(&base_ptr_),
@@ -30,9 +30,9 @@ CachingAllocator::CachingAllocator(SharedMemory &shared_memory,
                                    PagesPool &page_pool,
                                    CachingAllocatorConfig config,
                                    __attribute__((unused)) bool first_init)
-    : config(std::move(config)), page_pool_(page_pool),
+    : belong(page_pool.GetBelongRegistry().GetOrCreateBelong(config.belong_name)), config(std::move(config)), page_pool_(page_pool),
       shared_memory_(shared_memory),
-      mapping_region_(shared_memory_, page_pool, this->config.belong,
+      mapping_region_(shared_memory_, page_pool, belong,
                       this->config.log_prefix, config.va_range_scale),
       all_block_list_(
           *shared_memory_->find_or_construct<bip_list<shm_handle<MemBlock>>>(
@@ -58,32 +58,32 @@ MemBlock *CachingAllocator::Alloc(size_t nbytes, cudaStream_t cuda_stream,
     block = AllocWithContext(nbytes, global_stream_context_);
   }
   if (block == nullptr && try_expand_VA) {
-    CHECK(!MORE_MORE_CHECK_STATE || CheckState());
+    CHECK(CHECK_LEVEL < 3 || CheckState());
     block = stream_context.stream_block_list.CreateEntryExpandVA(nbytes);
     LOG(INFO) << block;
-    CHECK(!MORE_MORE_CHECK_STATE || CheckState());
+    CHECK(CHECK_LEVEL < 3 || CheckState());
     stream_context.stream_free_list.PushBlock(block);
-    CHECK(!MORE_MORE_CHECK_STATE || CheckState());
+    CHECK(CHECK_LEVEL < 3 || CheckState());
     block = AllocWithContext(nbytes, stream_context);
     // LOG(INFO) << block;
   }
-  CHECK(!MORE_CHECK_STATE || CheckState());
+  CHECK(CHECK_LEVEL < 2 || CheckState());
   if (block != nullptr) {
     mapping_region_.EnsureBlockWithPage(block, all_block_list_);
   }
-  CHECK(!CHECK_STATE || CheckState());
+  CHECK(CHECK_LEVEL < 1 || CheckState());
   return block;
 }
 
 void CachingAllocator::Free(MemBlock *block) {
   auto &context = GetStreamContext(block->stream);
   CHECK(!block->is_free) << block;
-  CHECK(!MORE_MORE_CHECK_STATE || CheckState());
+  CHECK(CHECK_LEVEL < 3 || CheckState());
   if (block->is_small) {
     block = context.stream_free_list.PushBlock(block);
-    CHECK(!MORE_MORE_CHECK_STATE || CheckState());
+    CHECK(CHECK_LEVEL < 3 || CheckState());
     block = context.stream_free_list.MaybeMergeAdj(block);
-    CHECK(!MORE_MORE_CHECK_STATE || CheckState());
+    CHECK(CHECK_LEVEL < 3 || CheckState());
   } else {
     block = context.stream_free_list.PushBlock(block);
     if (auto *prev_entry = context.stream_block_list.GetPrevEntry(block);
@@ -92,7 +92,7 @@ void CachingAllocator::Free(MemBlock *block) {
       size_t prev_entry_nbytes = prev_entry->nbytes;
       auto *maybe_merged_entry =
           context.stream_free_list.MaybeMergeAdj(prev_entry);
-      CHECK(!MORE_MORE_CHECK_STATE || CheckState());
+      CHECK(CHECK_LEVEL < 3 || CheckState());
       if (maybe_merged_entry->nbytes > prev_entry_nbytes) {
         block = maybe_merged_entry;
       }
@@ -103,17 +103,17 @@ void CachingAllocator::Free(MemBlock *block) {
       size_t next_entry_nbytes = next_entry->nbytes;
       auto *maybe_merged_entry =
           context.stream_free_list.MaybeMergeAdj(next_entry);
-      CHECK(!MORE_MORE_CHECK_STATE || CheckState());
+      CHECK(CHECK_LEVEL < 3 || CheckState());
       if (maybe_merged_entry->nbytes > next_entry_nbytes) {
         block = maybe_merged_entry;
       }
     }
   }
-  CHECK(!CHECK_STATE || CheckState());
+  CHECK(CHECK_LEVEL < 1 || CheckState());
 }
 void CachingAllocator::EmptyCache(__attribute__((unused))
                                   cudaStream_t cuda_stream) {
-  LOG_IF(INFO, VERBOSE) << config.log_prefix << "Release free physical memory.";
+  LOG_IF(INFO, VERBOSE_LEVEL) << config.log_prefix << "Release free physical memory.";
   // auto &context = GetStreamContext(cuda_stream);
   // context.stream_block_list.EmptyCache();
   mapping_region_.EmptyCache(all_block_list_);
@@ -121,7 +121,7 @@ void CachingAllocator::EmptyCache(__attribute__((unused))
     auto stream_context = handle.ptr(shared_memory_);
     stream_context->MoveFreeBlockTo(global_stream_context_);
   }
-  CHECK(!CHECK_STATE || CheckState());
+  CHECK(CHECK_LEVEL < 1 || CheckState());
 };
 
 
@@ -148,10 +148,10 @@ StreamContext &CachingAllocator::GetStreamContext(cudaStream_t cuda_stream) {
 MemBlock *CachingAllocator::AllocWithContext(size_t nbytes,
                                              StreamContext &stream_context) {
   bool is_small = nbytes <= config.small_block_nbytes;
-  CHECK(!MORE_CHECK_STATE || CheckState());
+  CHECK(CHECK_LEVEL < 2 || CheckState());
   auto *free_block =
       stream_context.stream_free_list.PopBlock(is_small, nbytes, 50);
-  CHECK(!MORE_CHECK_STATE || CheckState());
+  CHECK(CHECK_LEVEL < 2 || CheckState());
   // LOG(INFO) << free_block << " is small " << is_small;
   if (free_block == nullptr && is_small) {
     free_block = stream_context.stream_free_list.PopBlock(
@@ -162,7 +162,7 @@ MemBlock *CachingAllocator::AllocWithContext(size_t nbytes,
       free_block = stream_context.stream_free_list.PopBlock(true, nbytes, 0);
     }
   }
-  CHECK(!MORE_CHECK_STATE || CheckState());
+  CHECK(CHECK_LEVEL < 2 || CheckState());
   return free_block;
 }
 bool CachingAllocator::CheckState() {

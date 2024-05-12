@@ -4,7 +4,7 @@ set(ALLOCATOR_SRC
     src/stream_context.cc
 )
 
-add_library(allocator ${ALLOCATOR_SRC})
+add_library(allocator SHARED ${ALLOCATOR_SRC})
 include(${PROJECT_SOURCE_DIR}/cmake/glog.cmake)
 target_link_libraries(allocator PUBLIC CUDA::cudart CUDA::cuda_driver Threads::Threads rt glog::glog pages_pool)
 target_include_directories(allocator PUBLIC include)

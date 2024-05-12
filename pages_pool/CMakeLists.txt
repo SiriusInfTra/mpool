@@ -9,7 +9,7 @@ set(PAGES_POOL_TEST
 )
 
 
-add_library(pages_pool ${PAGES_POOL_SRC})
+add_library(pages_pool SHARED ${PAGES_POOL_SRC})
 include(${PROJECT_SOURCE_DIR}/cmake/glog.cmake)
 target_link_libraries(pages_pool PUBLIC CUDA::cudart CUDA::cuda_driver Threads::Threads rt glog::glog)
 target_include_directories(pages_pool PUBLIC include)

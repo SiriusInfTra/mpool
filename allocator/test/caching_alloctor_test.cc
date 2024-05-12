@@ -63,7 +63,7 @@ void run(const PagesPoolConf &config, const std::string &name, int seed) {
         .shm_name = "ca_wyk",
         .shm_nbytes = 1_GB,
         .va_range_scale = 4,
-        .belong = page_pool.GetBelongRegistry().RegisterBelong(name),
+        .belong_name = name,
         .small_block_nbytes = 2_MB,
         .align_nbytes = 512_B
     };
@@ -76,7 +76,7 @@ void run(const PagesPoolConf &config, const std::string &name, int seed) {
     std::vector<std::shared_ptr<WrapMemBlock>> own_pages;
 
     for (size_t k = 0; k < 1000; ++k) {
-        DLOG(INFO) << "k = " << k << " usage = " << ByteDisplay(WrapMemBlock::GetTotalNBytes()) << " | " << caching_allocator_config.belong.GetPagesNum() << ".";
+        // DLOG(INFO) << "k = " << k << " usage = " << ByteDisplay(WrapMemBlock::GetTotalNBytes()) << " | " << caching_allocator_config.belong.GetPagesNum() << ".";
         size_t nbytes = std::uniform_int_distribution<num_t>(1, 1_GB)(rng);
         // auto lock = page_pool.Lock();
         if (WrapMemBlock::GetTotalNBytes() + nbytes > 11_GB) {
@@ -94,8 +94,8 @@ void run(const PagesPoolConf &config, const std::string &name, int seed) {
 
 int main() {
     PagesPoolConf conf{
-        .PAGE_NBYTES = 32_MB,
-        .POOL_NBYTES = 12_GB,
+        .page_nbytes = 32_MB,
+        .pool_nbytes = 12_GB,
         .shm_name = "mempool_wyk",
         .log_prefix = "mempool",
         .shm_nbytes = 1_GB,

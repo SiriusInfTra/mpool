@@ -1,0 +1,12 @@
+cmake_minimum_required(VERSION 3.15)
+project(py_mpool)
+
+find_package(Python REQUIRED COMPONENTS Interpreter Development.Module)
+find_package(pybind11 CONFIG REQUIRED)
+python_add_library(_C MODULE bind.cc WITH_SOABI)
+target_link_libraries(_C PRIVATE pybind11::headers pages_pool allocator)
+target_compile_definitions(_C PRIVATE VERSION_INFO=${CMAKE_PROJECT_VERSION})
+set_target_properties(_C PROPERTIES INSTALL_RPATH "$ORIGIN")
+install(TARGETS _C DESTINATION mpool)
+install(TARGETS pages_pool DESTINATION mpool)
+install(TARGETS allocator DESTINATION mpool)

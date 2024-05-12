@@ -19,8 +19,8 @@ namespace mpool {
 namespace bip = boost::interprocess;
 
 struct PagesPoolConf {
-        size_t PAGE_NBYTES;
-        size_t POOL_NBYTES;
+        size_t page_nbytes;
+        size_t pool_nbytes;
         std::string shm_name;
         std::string log_prefix;
         size_t shm_nbytes;

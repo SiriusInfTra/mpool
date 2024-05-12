@@ -162,8 +162,8 @@ HandleTransfer::HandleTransfer(bip_shm &shm,
                 std::vector<PhyPage> &ref_phy_pages
 ) : shared_memory_(shm),
     phy_mem_list_(ref_phy_pages),
-    phy_pages_num_(conf.POOL_NBYTES / conf.PAGE_NBYTES), 
-    phy_pages_nbytes_(conf.PAGE_NBYTES)
+    phy_pages_num_(conf.pool_nbytes / conf.page_nbytes), 
+    phy_pages_nbytes_(conf.page_nbytes)
 {
     CHECK_EQ(phy_mem_list_.size(), 0);
     phy_mem_list_.reserve(phy_pages_num_);

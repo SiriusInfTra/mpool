@@ -18,17 +18,15 @@
 
 namespace mpool {
 
-const static constexpr bool VERBOSE = true;
-const static constexpr bool CHECK_STATE = true;
-const static constexpr bool MORE_CHECK_STATE = true;
-const static constexpr bool MORE_MORE_CHECK_STATE = true;
+const static constexpr unsigned VERBOSE_LEVEL = 1; /* 0 ~ 2*/
+const static constexpr unsigned CHECK_LEVEL = 1; /*0 ~ 3 */
 
 struct CachingAllocatorConfig {
   std::string log_prefix;
   std::string shm_name;
   size_t shm_nbytes;
   size_t va_range_scale;
-  Belong belong;
+  std::string belong_name;
   size_t small_block_nbytes;
   size_t align_nbytes;
 };
@@ -37,6 +35,7 @@ struct CachingAllocatorConfig {
 
 class CachingAllocator {
 public:
+  const Belong belong;
   const CachingAllocatorConfig config;
 
   static bool RemoveShm(const CachingAllocatorConfig &config) {

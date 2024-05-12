@@ -83,8 +83,14 @@ public:
         }
     }
 
-    Belong RegisterBelong(std::string name) {
+    Belong GetOrCreateBelong(std::string name) {
         bip::scoped_lock lock{*mutex};
+        for (auto handle : *registered_belongs) {
+            auto *belong = handle.ptr(shm_);
+            if (belong->name == name) {
+                return belong;
+            }
+        }
         auto *belong = CreateBelong(registered_belongs->size(), name);
         registered_belongs->emplace_back(belong, shm_);
         return belong;

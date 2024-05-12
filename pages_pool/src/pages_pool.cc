@@ -50,7 +50,7 @@ PagesPool::PagesPool(PagesPoolConf conf, bool force_cleanup): config(std::move(c
             LOG(INFO) << config.log_prefix << "Init slave";
             handle_transfer_.InitSlave(belong_registery_.GetFreeBelong());
         }
-        free_list_.Init(config.POOL_NBYTES / config.PAGE_NBYTES);
+        free_list_.Init(config.pool_nbytes / config.page_nbytes);
     }
     LOG(INFO) << config.log_prefix;
 }

@@ -33,12 +33,12 @@ void run(const PagesPoolConf &conf, const std::string &name, int seed) {
     PagesPool page_pool{conf, false};
 
     std::mt19937 rng{static_cast<unsigned long>(seed)};
-    auto belong = page_pool.GetBelongRegistry().RegisterBelong(name);
+    auto belong = page_pool.GetBelongRegistry().GetOrCreateBelong(name);
     std::unordered_set<index_t> own_pages;
 
     for (size_t k = 0; k < 1000; ++k) {
         DLOG(INFO) << "k = " << k << " usage = " << belong.GetPagesNum() << ".";
-        num_t num_req = std::uniform_int_distribution<num_t>(1, 1_GB / conf.PAGE_NBYTES)(rng);
+        num_t num_req = std::uniform_int_distribution<num_t>(1, 1_GB / conf.page_nbytes)(rng);
         double req_con = std::uniform_real_distribution<double>(0, 1)(rng);
         size_t s0 = own_pages.size();
         auto lock = page_pool.Lock();
@@ -83,8 +83,8 @@ void run(const PagesPoolConf &conf, const std::string &name, int seed) {
 }
 int main() {
     PagesPoolConf conf{
-        .PAGE_NBYTES = 32_MB,
-        .POOL_NBYTES = 12_GB,
+        .page_nbytes = 32_MB,
+        .pool_nbytes = 12_GB,
         .shm_name = "mempool_wyk",
         .log_prefix = "mempool",
         .shm_nbytes = 1_GB,

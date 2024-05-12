@@ -39,7 +39,7 @@ public:
     static bool RemoveShm(const PagesPoolConf &config) {
         return bip::shared_memory_object::remove(config.shm_name.c_str());
     }
-    PagesPool(PagesPoolConf conf, bool force_cleanup);
+    PagesPool(PagesPoolConf conf, bool force_cleanup = false);
 
     ~PagesPool();
 

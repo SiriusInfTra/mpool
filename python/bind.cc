@@ -1,9 +1,15 @@
 #include "belong.h"
+#include "shm.h"
+#include <boost/interprocess/sync/interprocess_mutex.hpp>
+#include <boost/interprocess/sync/scoped_lock.hpp>
 #include <pybind11/pybind11.h>
 #include <pybind11/pytypes.h>
+#include <pybind11/stl.h>
 
 #include <pages_pool.h>
 #include <caching_allocator.h>
+#include <cuda.h>
+#include <cuda_runtime_api.h>
 
 #define STRINGIFY(x) #x
 #define MACRO_STRINGIFY(x) STRINGIFY(x)
@@ -44,11 +50,16 @@ PYBIND11_MODULE(_C, m) {
         .def_readwrite("log_prefix", &PagesPoolConf::log_prefix)
         .def_readwrite("shm_nbytes", &PagesPoolConf::shm_nbytes);
     py::class_<Belong>(m, "C_Belong");
+    py::class_<bip::scoped_lock<bip::interprocess_mutex>>(m, "C_Lock");
+    py::class_<mpool::MemBlock>(m, "C_MemBlock");
     py::class_<PagesPool>(m, "C_PagesPool")
-        .def(py::init<PagesPoolConf>());
-        // .def("PagesView", &PagesPool::PagesView)
-        // .def("Lock", &PagesPool::Lock)
-        // .def("GetBelongRegistry", &PagesPool::GetBelongRegistry);
+        .def(py::init<PagesPoolConf>())
+        .def("Lock", &PagesPool::Lock)
+        .def("GetBelong", &PagesPool::GetBelong)
+        .def("AllocConPages", &PagesPool::AllocConPages)
+        .def("AllocDisPages", &PagesPool::AllocDisPages)
+        .def("FreePages", &PagesPool::FreePages)
+        .attr("INSUFFICIENT_PAGE") = PagesPool::INSUFFICIENT_PAGE;
 py::class_<CachingAllocatorConfig>(m, "C_CachingAllocatorConfig")
         .def(py::init<const std::string&, const std::string&, size_t, size_t, const std::string&, size_t, size_t>())
         .def_readwrite("log_prefix", &CachingAllocatorConfig::log_prefix)
@@ -63,8 +74,13 @@ py::class_<CachingAllocatorConfig>(m, "C_CachingAllocatorConfig")
         .def(py::init<std::string, size_t>());
     m.def("GetBelong", &GetBelong);
 
-    // py::class_<CachingAllocator>(m, "C_CachingAllocator")
-    //     .def(py::init())
+    py::class_<CachingAllocator>(m, "C_CachingAllocator")
+        .def(py::init<SharedMemory&, PagesPool&, CachingAllocatorConfig>(),
+            py::arg("share_memory"), py::arg("page_pool"), py::arg("config"))
+        .def("Alloc", [](CachingAllocator &allocator, size_t nbytes, long cuda_stream, bool try_expand_VA){
+            return allocator.Alloc(nbytes, reinterpret_cast<cudaStream_t>(cuda_stream), try_expand_VA);
+        }, py::return_value_policy::reference)
+        .def("Free", &CachingAllocator::Free);
     // py::class_<BelongImpl, std::unique_ptr<Belong, py::nodelete>>(m, "BelongImpl")
     //             .def(py::init<>());
     // py::class_<PagesPool>(m, "PagesPool")

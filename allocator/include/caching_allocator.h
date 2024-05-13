@@ -57,7 +57,7 @@ private:
 
 public:
   CachingAllocator(SharedMemory &shared_memory, PagesPool &page_pool,
-                   CachingAllocatorConfig config, bool first_init);
+                   CachingAllocatorConfig config);
 
   ~CachingAllocator();
 

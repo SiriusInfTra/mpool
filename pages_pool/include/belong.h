@@ -83,7 +83,7 @@ public:
         }
     }
 
-    Belong GetOrCreateBelong(std::string name) {
+    Belong GetOrCreateBelong(const std::string &name) {
         bip::scoped_lock lock{*mutex};
         for (auto handle : *registered_belongs) {
             auto *belong = handle.ptr(shm_);

@@ -69,7 +69,7 @@ void run(const PagesPoolConf &config, const std::string &name, int seed) {
     };
     CachingAllocator::RemoveShm(caching_allocator_config);
     SharedMemory shared_memory{caching_allocator_config.shm_name, caching_allocator_config.shm_nbytes};
-    CachingAllocator caching_allocator{shared_memory, page_pool, caching_allocator_config, true};
+    CachingAllocator caching_allocator{shared_memory, page_pool, caching_allocator_config};
 
     std::mt19937 rng{static_cast<unsigned long>(seed)};
     

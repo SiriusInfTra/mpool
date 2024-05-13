@@ -99,16 +99,16 @@ void PagesPool::FreePages(const std::vector<index_t> &pages, Belong blg, bip::sc
     blg.impl_->pages_num.fetch_sub(pages.size(), std::memory_order_relaxed);
 }
 
-void PagesPool::FreePages(index_t index_begin, num_t pages_len, Belong blg, bip::scoped_lock<bip_mutex> &lock) {
-    CHECK(lock.owns());
-    for (size_t index = index_begin; index < index_begin + pages_len; ++index) {
-        auto &page = phy_pages[index];
-        CHECK_EQ(*page.belong, blg);
-        *page.belong = belong_registery_.GetFreeBelong();
-    }
-    free_list_.ReleasePages(index_begin, pages_len);
-    blg.impl_->pages_num.fetch_sub(pages_len, std::memory_order_relaxed);
-}
+// void PagesPool::FreePages(index_t index_begin, num_t pages_len, Belong blg, bip::scoped_lock<bip_mutex> &lock) {
+//     CHECK(lock.owns());
+//     for (size_t index = index_begin; index < index_begin + pages_len; ++index) {
+//         auto &page = phy_pages[index];
+//         CHECK_EQ(*page.belong, blg);
+//         *page.belong = belong_registery_.GetFreeBelong();
+//     }
+//     free_list_.ReleasePages(index_begin, pages_len);
+//     blg.impl_->pages_num.fetch_sub(pages_len, std::memory_order_relaxed);
+// }
 PagesPool::~PagesPool() {
     if (self_master) {
         auto getRefCount = [&] {

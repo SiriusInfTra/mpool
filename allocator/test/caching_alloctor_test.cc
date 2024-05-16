@@ -82,7 +82,7 @@ void run(const PagesPoolConf &config, const std::string &name, int seed) {
         if (WrapMemBlock::GetTotalNBytes() + nbytes > 11_GB) {
             std::shuffle(own_pages.begin(), own_pages.end(), rng);
             own_pages.clear();
-            caching_allocator.EmptyCache(0);
+            caching_allocator.EmptyCache();
         } else {
             own_pages.push_back(std::make_shared<WrapMemBlock>(nbytes, caching_allocator));
         }

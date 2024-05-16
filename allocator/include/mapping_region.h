@@ -43,6 +43,12 @@ public:
   void UnMapPages(const std::vector<index_t> &release_pages);
 
   void EmptyCache(bip_list<shm_handle<MemBlock>> &block_list);
+
+  std::byte *GetBasePtr() const { return base_ptr_; }
+
+  std::byte *GetEndPtr() const {
+    return base_ptr_ + mem_block_nbytes * mapping_pages_.size();
+  }
 };
 
 }

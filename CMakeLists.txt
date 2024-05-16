@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.18)
 project(mpool LANGUAGES CXX C CUDA)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_C_STANDARD 11)
-set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror -Wreturn-type -Wno-missing-field-initializers -Wno-class-memaccess")
+set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror -Wreturn-type -Wno-missing-field-initializers -Wno-class-memaccess -Wno-unused-parameter")
 
 find_package(CUDAToolkit 11 REQUIRED)
 find_package(Threads REQUIRED)

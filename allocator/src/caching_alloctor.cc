@@ -59,7 +59,7 @@ MemBlock *CachingAllocator::Alloc(size_t nbytes, cudaStream_t cuda_stream,
   if (block == nullptr && try_expand_VA) {
     CHECK(CHECK_LEVEL < 3 || CheckState());
     block = stream_context.stream_block_list.CreateEntryExpandVA(nbytes);
-    LOG(INFO) << block;
+    LOG_IF(INFO, VERBOSE_LEVEL >= 3) << block;
     CHECK(CHECK_LEVEL < 3 || CheckState());
     stream_context.stream_free_list.PushBlock(block);
     CHECK(CHECK_LEVEL < 3 || CheckState());
@@ -110,8 +110,7 @@ void CachingAllocator::Free(MemBlock *block) {
   }
   CHECK(CHECK_LEVEL < 1 || CheckState());
 }
-void CachingAllocator::EmptyCache(__attribute__((unused))
-                                  cudaStream_t cuda_stream) {
+void CachingAllocator::EmptyCache() {
   LOG_IF(INFO, VERBOSE_LEVEL) << config.log_prefix << "Release free physical memory.";
   // auto &context = GetStreamContext(cuda_stream);
   // context.stream_block_list.EmptyCache();

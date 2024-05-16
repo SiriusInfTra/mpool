@@ -55,7 +55,7 @@ PagesPool::PagesPool(PagesPoolConf conf, bool force_cleanup): config(std::move(c
     LOG(INFO) << config.log_prefix;
 }
 index_t PagesPool::AllocConPages(Belong blg, num_t num_req, bip::scoped_lock<bip_mutex> &lock) {
-    DLOG(INFO) << "AllocConPages: blg=" << blg << ", num_req=" << num_req << "."; 
+    LOG_IF(INFO, VERBOSE_LEVEL >= 3) << "AllocConPages: blg=" << blg << ", num_req=" << num_req << "."; 
     CHECK(lock.owns());
     size_t index_begin = free_list_.FindBestFit(num_req);
     if (index_begin == FreeList::INVALID_POS) {
@@ -71,7 +71,7 @@ index_t PagesPool::AllocConPages(Belong blg, num_t num_req, bip::scoped_lock<bip
     return index_begin;
 }
 std::vector<index_t> PagesPool::AllocDisPages(Belong blg, num_t num_req, bip::scoped_lock<bip_mutex> &lock) {
-    DLOG(INFO) << "AllocDisPages: blg=" << blg << ", num_req=" << num_req << "."; 
+    LOG_IF(INFO, VERBOSE_LEVEL >= 3) << "AllocDisPages: blg=" << blg << ", num_req=" << num_req << "."; 
     CHECK(lock.owns());
     std::vector<index_t> ret;
     ret.reserve(num_req);

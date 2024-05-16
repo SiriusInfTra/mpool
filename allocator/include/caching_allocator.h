@@ -18,8 +18,7 @@
 
 namespace mpool {
 
-const static constexpr unsigned VERBOSE_LEVEL = 1; /* 0 ~ 2*/
-const static constexpr unsigned CHECK_LEVEL = 1; /*0 ~ 3 */
+
 
 struct CachingAllocatorConfig {
   std::string log_prefix;
@@ -59,6 +58,18 @@ public:
   CachingAllocator(SharedMemory &shared_memory, PagesPool &page_pool,
                    CachingAllocatorConfig config);
 
+  std::byte *GetBasePtr() const { return mapping_region_.GetBasePtr(); }
+
+  std::byte *GetEndPtr() const { return mapping_region_.GetEndPtr(); }
+
+  bool IsAllocatedPtr(std::byte *ptr) {
+    return ptr >= mapping_region_.GetBasePtr() && ptr < mapping_region_.GetEndPtr();
+  }
+
+
+
+  
+
   ~CachingAllocator();
 
   MemBlock *AllocWithContext(size_t nbytes, StreamContext &stream_context);
@@ -68,7 +79,7 @@ public:
 
   void Free(MemBlock *block);
 
-  void EmptyCache(cudaStream_t cuda_stream);
+  void EmptyCache();
 
   bool CheckState();
 };

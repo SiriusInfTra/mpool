@@ -74,7 +74,7 @@ public:
   MemBlock *Alloc(size_t nbytes, cudaStream_t cuda_stream,
                   bool try_expand_VA = true);
 
-  void Free(MemBlock *block);
+  void Free(const MemBlock *block);
 
   void EmptyCache();
 

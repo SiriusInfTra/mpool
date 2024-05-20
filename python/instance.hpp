@@ -1,4 +1,5 @@
 #include "belong.h"
+#include "mem_block.h"
 #include "pages.h"
 #include "shm.h"
 #include <boost/interprocess/sync/interprocess_mutex.hpp>
@@ -41,7 +42,6 @@ public:
 void RegisterPagesPool(py::module &m) {
   py::class_<Belong>(m, "C_Belong");
   py::class_<bip::scoped_lock<bip::interprocess_mutex>>(m, "C_Lock");
-  py::class_<mpool::MemBlock>(m, "C_MemBlock");
   py::class_<PagesPoolConf>(m, "C_PagesPoolConf")
       .def(py::init<size_t, size_t, const std::string &, const std::string &,
                     size_t>(),
@@ -77,6 +77,10 @@ void RegisterCachingAllocator(py::module &m) {
       .def_readwrite("small_block_nbytes",
                      &CachingAllocatorConfig::small_block_nbytes)
       .def_readwrite("align_nbytes", &CachingAllocatorConfig::align_nbytes);
+  py::class_<MemBlock>(m, "C_MemBlock")
+    .def_readonly("addr_offset", &MemBlock::addr_offset)
+    .def_readonly("nbytes", &MemBlock::nbytes)
+    .def_property_readonly("stream", [](const MemBlock *mem_block) { return reinterpret_cast<long>(mem_block->stream); });
   py::class_<CachingAllocator>(m, "C_CachingAllocator")
       .def(
           "Alloc",
@@ -87,7 +91,8 @@ void RegisterCachingAllocator(py::module &m) {
                                    try_expand_VA);
           },
           py::return_value_policy::reference)
-      .def("Free", &CachingAllocator::Free);
+      .def("Free", &CachingAllocator::Free)
+      .def_property_readonly("base_ptr", [](const CachingAllocator *caching_allocator) { return reinterpret_cast<long>(caching_allocator->GetBasePtr()); });
   m.def("override_pytorch_allocator", OverridePyTorchAllocator);
 }
 static Instance ins;
@@ -155,6 +160,22 @@ void RegisterInstance(py::module &m) {
         ins.caching_allocator_instance.erase(it);
       },
       py::return_value_policy::reference);
+  class RAIIMemBlock {
+  private:
+    CachingAllocator *allocator_;
+    const MemBlock *mem_block_;
+
+  public:
+    RAIIMemBlock(CachingAllocator *allocator, const MemBlock *mem_block): allocator_(allocator), mem_block_(mem_block) {
+
+    }
+    ~RAIIMemBlock() {
+      allocator_->Free(mem_block_);
+    }
+  };
+  py::class_<RAIIMemBlock, std::shared_ptr<RAIIMemBlock>>(m, "C_RAIIMemBlock")
+    .def(py::init<CachingAllocator*, const MemBlock*>(), py::arg("allocator"), py::arg("mem_block"));
+  
 }
 
 } // namespace mpool

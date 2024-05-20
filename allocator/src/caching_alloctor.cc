@@ -1,3 +1,4 @@
+#include "mem_block.h"
 #include <caching_allocator.h>
 #include <shm.h>
 #include <util.h>
@@ -74,7 +75,8 @@ MemBlock *CachingAllocator::Alloc(size_t nbytes, cudaStream_t cuda_stream,
   return block;
 }
 
-void CachingAllocator::Free(MemBlock *block) {
+void CachingAllocator::Free(const MemBlock *block0) {
+  auto *block = const_cast<MemBlock*>(block0);
   auto &context = GetStreamContext(block->stream);
   CHECK(!block->is_free) << block;
   CHECK(CHECK_LEVEL < 3 || CheckState());

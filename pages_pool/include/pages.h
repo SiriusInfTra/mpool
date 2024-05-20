@@ -64,12 +64,12 @@ private:
     // include/net/scm.h SCM_MAX_FD 253
     static const constexpr size_t TRANSFER_CHUNK_SIZE = 128;
 
-    bip_shm    &shared_memory_;
+    SharedMemory    &shared_memory_;
     bip_mutex         *request_mutex_;
     bip::interprocess_condition *request_cond_;
     bip_mutex         *ready_mutex_;
     bip::interprocess_condition *ready_cond_;
-    Belong                                            *shm_belong_list_;
+    Belong            *shm_belong_list_;
 
     std::string                 master_name_;
     std::string                 slave_name_;
@@ -82,11 +82,11 @@ private:
     std::unique_ptr<std::thread> vmm_export_thread_;
 
     void InitShm(Belong kFree) {
-        request_mutex_ = shared_memory_.find_or_construct<bip_mutex>("HT_request_mutex_")();
-        request_cond_ = shared_memory_.find_or_construct<bip::interprocess_condition>("HT_request_cond")();
-        ready_mutex_ = shared_memory_.find_or_construct<bip_mutex>("HT_ready_mutex_")();
-        ready_cond_ = shared_memory_.find_or_construct<bip::interprocess_condition>("HT_ready_cond")();
-        shm_belong_list_ = shared_memory_.find_or_construct<Belong>("HT_belong_list")[phy_pages_num_](kFree);
+        request_mutex_ = shared_memory_->find_or_construct<bip_mutex>("HT_request_mutex_")();
+        request_cond_ = shared_memory_->find_or_construct<bip::interprocess_condition>("HT_request_cond")();
+        ready_mutex_ = shared_memory_->find_or_construct<bip_mutex>("HT_ready_mutex_")();
+        ready_cond_ = shared_memory_->find_or_construct<bip::interprocess_condition>("HT_ready_cond")();
+        shm_belong_list_ = shared_memory_->find_or_construct<Belong>("HT_belong_list")[phy_pages_num_](kFree);
     }
 
     void SendHandles(int fd_list[], size_t len, bip::scoped_lock<bip_mutex> &ready_lock);
@@ -96,7 +96,7 @@ private:
     void ExportWorker();
 
 public:
-    HandleTransfer(bip_shm &shm, const PagesPoolConf &conf, std::vector<PhyPage> &ref_phy_pages);
+    HandleTransfer(SharedMemory &shared_memory, const PagesPoolConf &conf, std::vector<PhyPage> &ref_phy_pages);
     void InitMaster(Belong kFree);
     void InitSlave(Belong kFree);
     void ReleaseMaster();

@@ -28,7 +28,7 @@ MappingRegion::MappingRegion(SharedMemory &shared_memory, PagesPool &page_pool,
 
 CachingAllocator::CachingAllocator(SharedMemory &shared_memory,
                                    PagesPool &page_pool,
-                                   CachingAllocatorConfig config)
+                                   CachingAllocatorConfig config, bool first_init)
     : belong(page_pool.GetBelongRegistry().GetOrCreateBelong(config.belong_name)), config(std::move(config)), page_pool_(page_pool),
       shared_memory_(shared_memory),
       mapping_region_(shared_memory_, page_pool, belong,

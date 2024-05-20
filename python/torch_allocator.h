@@ -13,9 +13,6 @@
 
 namespace mpool {
 
-void UseTorchAllocator(CachingAllocator *caching_allocator);
-
-void UseDefaultAllocator();
 
 class TorchAllocator : public c10::cuda::CUDACachingAllocator::CUDAAllocator {
 public:
@@ -66,5 +63,7 @@ public:
 
   std::string name() override;
 };
+
+void OverridePyTorchAllocator(CachingAllocator *caching_allocator);
 
 } // namespace mpool

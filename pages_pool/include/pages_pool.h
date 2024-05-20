@@ -24,11 +24,7 @@ public:
     static const constexpr index_t INSUFFICIENT_PAGE = FreeList::INVALID_POS;
     const PagesPoolConf config;
 private:
-    bip_shm  shared_memory_;
-
-    bip_mutex     *mutex_;
-    int                         *ref_count_;
-    bool                        self_master;
+    SharedMemory  &shared_memory_;
 
     std::vector<PhyPage>    phy_pages;
     
@@ -39,7 +35,7 @@ public:
     static bool RemoveShm(const PagesPoolConf &config) {
         return bip::shared_memory_object::remove(config.shm_name.c_str());
     }
-    PagesPool(PagesPoolConf conf, bool force_cleanup = false);
+    PagesPool(SharedMemory &shared_memory, PagesPoolConf conf, bool first_init);
 
     ~PagesPool();
 
@@ -62,7 +58,7 @@ public:
     }
 
     bip::scoped_lock<bip_mutex> Lock() {
-        return bip::scoped_lock<bip_mutex>{*mutex_};
+        return bip::scoped_lock<bip_mutex>{shared_memory_.GetMutex()};
     }
 
 };

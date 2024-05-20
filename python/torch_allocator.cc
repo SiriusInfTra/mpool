@@ -3,6 +3,7 @@
 #include "mem_block.h"
 #include <atomic>
 #include <c10/util/logging_is_not_google_glog.h>
+#include <cstddef>
 #include <memory>
 #include <c10/cuda/CUDAFunctions.h>
 #include <c10/cuda/CUDACachingAllocator.h>
@@ -10,39 +11,29 @@
 
 namespace mpool {
 
-std::unique_ptr<TorchAllocator> torch_allocator = nullptr;
-std::atomic<c10::cuda::CUDACachingAllocator::CUDAAllocator*> default_allocator = nullptr;
+static std::unique_ptr<TorchAllocator> torch_allocator_ = nullptr;
 
-void UseTorchAllocator(CachingAllocator *caching_allocator) {
-  TorchAllocator *ta;
-  if (torch_allocator == nullptr) {
-    ta  = new TorchAllocator(*caching_allocator);
-    torch_allocator.reset(ta);
-  } else {
-    ta = torch_allocator.get();
+void OverridePyTorchAllocator(CachingAllocator *caching_allocator) {
+  if (auto *allocator = c10::cuda::CUDACachingAllocator::allocator.load(); allocator != nullptr && allocator->initialized()) {
+    TORCH_WARN_ONCE("c10::cuda::CUDACachingAllocator::allocator is initialized!");
   }
-  CHECK(!c10::cuda::CUDACachingAllocator::allocator.load()->initialized());
-  c10::cuda::CUDACachingAllocator::allocator.store(ta);
-  // LOG(WARNING) << "Use TorchAllocator: " << ta << ".";
+  if (torch_allocator_ != nullptr) {
+    TORCH_WARN_ONCE("already set torch allocator!");
+  }
+  torch_allocator_.reset(new TorchAllocator(*caching_allocator));
+  c10::cuda::CUDACachingAllocator::allocator.store(torch_allocator_.get());
 }
 
-void UseDefaultAllocator() {
-  TORCH_CHECK(default_allocator != nullptr, "Default allocator is not set.");
-  TORCH_CHECK(torch_allocator != nullptr, "Torch allocator is not set.");
-  auto *da = default_allocator.load();
-  c10::cuda::CUDACachingAllocator::allocator.store(da);
-  // LOG(WARNING) << "Use DefaultAllocator: " << da << ".";
-}
 
 void RawDeletePtr(void *ptr) {
-  TORCH_CHECK(torch_allocator != nullptr, "Torch allocator is not set.");
-  torch_allocator->raw_delete(ptr);
+  TORCH_CHECK(torch_allocator_ != nullptr, "Torch allocator is not set.");
+  torch_allocator_->raw_delete(ptr);
 }
 
 void BlockDeletePtr(void *ptr) {
-  TORCH_CHECK(torch_allocator != nullptr, "Torch allocator is not set.");
+  TORCH_CHECK(torch_allocator_ != nullptr, "Torch allocator is not set.");
   auto *block = reinterpret_cast<MemBlock*>(ptr);
-  torch_allocator->_caching_allocator.Free(block);
+  torch_allocator_->_caching_allocator.Free(block);
 }
 
 c10::DataPtr TorchAllocator::allocate(size_t nbytes) const {

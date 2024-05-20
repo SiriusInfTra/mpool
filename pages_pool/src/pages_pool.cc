@@ -21,37 +21,21 @@
 namespace mpool {
 
 
-PagesPool::PagesPool(PagesPoolConf conf, bool force_cleanup): config(std::move(conf)), shared_memory_(),
+PagesPool::PagesPool(SharedMemory &shared_memory, PagesPoolConf conf, bool first_init): config(std::move(conf)), shared_memory_(shared_memory),
     free_list_(shared_memory_), handle_transfer_(shared_memory_, config, phy_pages),
     belong_registery_(shared_memory_)
 {
-    if (force_cleanup) {
-        bip::shared_memory_object::remove(config.shm_name.c_str());
-    }
-    shared_memory_ = bip_shm{
-        bip::open_or_create, 
-        config.shm_name.c_str(),
-        config.shm_nbytes
-    };
     CU_CALL(cuInit(0));
-    auto atomic_init = [&] {
-        ref_count_ = shared_memory_.find_or_construct<int>("ME_ref_count")();
-        mutex_ = shared_memory_.find_or_construct<bip_mutex>("ME_mutex")();
-        belong_registery_.Init();
-    };
-    shared_memory_.atomic_func(atomic_init);
-    {
-        bip::scoped_lock locker(*mutex_);
-        self_master = (*ref_count_)++ == 0;
-        if (self_master) {
-            LOG(INFO) << config.log_prefix << "Init master";
-            handle_transfer_.InitMaster(belong_registery_.GetFreeBelong());
-        } else {
-            LOG(INFO) << config.log_prefix << "Init slave";
-            handle_transfer_.InitSlave(belong_registery_.GetFreeBelong());
-        }
-        free_list_.Init(config.pool_nbytes / config.page_nbytes);
+    belong_registery_.Init();
+    if (first_init) {
+        LOG(INFO) << config.log_prefix << "Init master";
+        handle_transfer_.InitMaster(belong_registery_.GetFreeBelong());
+    } else {
+        LOG(INFO) << config.log_prefix << "Init mirror";
+        handle_transfer_.InitSlave(belong_registery_.GetFreeBelong());
     }
+
+    free_list_.Init(config.pool_nbytes / config.page_nbytes);
     LOG(INFO) << config.log_prefix;
 }
 index_t PagesPool::AllocConPages(Belong blg, num_t num_req, bip::scoped_lock<bip_mutex> &lock) {
@@ -110,25 +94,25 @@ void PagesPool::FreePages(const std::vector<index_t> &pages, Belong blg, bip::sc
 //     blg.impl_->pages_num.fetch_sub(pages_len, std::memory_order_relaxed);
 // }
 PagesPool::~PagesPool() {
-    if (self_master) {
-        auto getRefCount = [&] {
-          bip::scoped_lock locker(*mutex_);
-          return *ref_count_;
-        };
-        int ref_count;
-        while ((ref_count = getRefCount()) > 1) {
-            LOG(INFO) << "[mempool] master wait slave shutdown, ref_count = "
-                      << ref_count << ".";
-            std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        }
-        handle_transfer_.ReleaseMaster();
-        bip::shared_memory_object::remove(config.shm_name.c_str());
-        LOG(INFO) << "[mempool] free master.";
-    } else {
-        bip::scoped_lock locker(*mutex_);
-        --(*ref_count_);
-        LOG(INFO) << "[mempool] free slave.";
-    }
+    // if (shared_memory_.IsMaster()) {
+    //     auto getRefCount = [&] {
+    //       bip::scoped_lock locker(*mutex_);
+    //       return *ref_count_;
+    //     };
+    //     int ref_count;
+    //     while ((ref_count = getRefCount()) > 1) {
+    //         LOG(INFO) << "[mempool] master wait slave shutdown, ref_count = "
+    //                   << ref_count << ".";
+    //         std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    //     }
+    //     handle_transfer_.ReleaseMaster();
+    //     bip::shared_memory_object::remove(config.shm_name.c_str());
+    //     LOG(INFO) << "[mempool] free master.";
+    // } else {
+    //     bip::scoped_lock locker(*mutex_);
+    //     --(*ref_count_);
+    //     LOG(INFO) << "[mempool] free slave.";
+    // }
 }
 
 BelongRegistry &PagesPool::GetBelongRegistry() { return belong_registery_; }

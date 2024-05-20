@@ -16,9 +16,9 @@ public:
     static const constexpr index_t INVALID_POS = std::numeric_limits<size_t>::max();
 private:
     bip_vector<int> *alloc_bitmap_;
-    bip_shm &shm_;
+    SharedMemory &shared_memory_;
 public:
-    FreeList(bip_shm &shm): shm_(shm) {}
+    FreeList(SharedMemory &shm): shared_memory_(shm) {}
 
     index_t FindBestFit(num_t request_len) {
         size_t best_fit_len = INVALID_LEN;
@@ -70,7 +70,7 @@ public:
     }
 
     void Init(num_t pages_nums) {
-        alloc_bitmap_ = shm_.find_or_construct<bip_vector<int>>("FL_alloc_bitmap_")(shm_.get_segment_manager());
+        alloc_bitmap_ = shared_memory_->find_or_construct<bip_vector<int>>("FL_alloc_bitmap_")(shared_memory_->get_segment_manager());
         if (alloc_bitmap_->empty()) {
             alloc_bitmap_->resize(pages_nums);
             std::fill(alloc_bitmap_->begin(), alloc_bitmap_->end(), false);

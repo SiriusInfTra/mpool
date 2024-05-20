@@ -57,42 +57,42 @@ public:
 
 class BelongRegistry {
 private:
-    bip_shm &shm_;
+    SharedMemory &shared_memory_;
     bip_vector<shm_handle<BelongImpl>> *registered_belongs;
     bip::interprocess_sharable_mutex *mutex;
     BelongImpl *kFreeBelong;
 
     BelongImpl *CreateBelong(size_t index, std::string name) {
-        auto *belong_impl = shm_.allocate(sizeof(BelongImpl));
+        auto *belong_impl = shared_memory_->allocate(sizeof(BelongImpl));
         return new (belong_impl) BelongImpl{index, name, 0};
     }
 
 public:
-    BelongRegistry(bip_shm &shm): shm_(shm) {}
+    BelongRegistry(SharedMemory &shared_memory): shared_memory_(shared_memory) {}
 
     void Init() {  
-        registered_belongs = shm_.find_or_construct<bip_vector<shm_handle<BelongImpl>>>
-            ("BR_registered_belongs")(shm_.get_segment_manager());
-        mutex = shm_.find_or_construct<bip::interprocess_sharable_mutex>("BR_mutex")();
+        registered_belongs = shared_memory_->find_or_construct<bip_vector<shm_handle<BelongImpl>>>
+            ("BR_registered_belongs")(shared_memory_->get_segment_manager());
+        mutex = shared_memory_->find_or_construct<bip::interprocess_sharable_mutex>("BR_mutex")();
         bip::scoped_lock lock{*mutex};
         if (registered_belongs->empty()) {
             kFreeBelong = CreateBelong(0, "FREE");
-            registered_belongs->emplace_back(kFreeBelong, shm_);
+            registered_belongs->emplace_back(kFreeBelong, shared_memory_);
         } else {
-            kFreeBelong = registered_belongs->front().ptr(shm_);
+            kFreeBelong = registered_belongs->front().ptr(shared_memory_);
         }
     }
 
     Belong GetOrCreateBelong(const std::string &name) {
         bip::scoped_lock lock{*mutex};
         for (auto handle : *registered_belongs) {
-            auto *belong = handle.ptr(shm_);
+            auto *belong = handle.ptr(shared_memory_);
             if (belong->name == name) {
                 return belong;
             }
         }
         auto *belong = CreateBelong(registered_belongs->size(), name);
-        registered_belongs->emplace_back(belong, shm_);
+        registered_belongs->emplace_back(belong, shared_memory_);
         return belong;
     }
 

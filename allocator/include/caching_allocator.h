@@ -41,6 +41,7 @@ public:
     return bip::shared_memory_object::remove(config.shm_name.c_str());
   }
 
+
 private:
   PagesPool &page_pool_;
   SharedMemory &shared_memory_;
@@ -56,7 +57,7 @@ private:
 
 public:
   CachingAllocator(SharedMemory &shared_memory, PagesPool &page_pool,
-                   CachingAllocatorConfig config);
+                   CachingAllocatorConfig config, bool first_init);
 
   std::byte *GetBasePtr() const { return mapping_region_.GetBasePtr(); }
 
@@ -65,10 +66,6 @@ public:
   bool IsAllocatedPtr(std::byte *ptr) {
     return ptr >= mapping_region_.GetBasePtr() && ptr < mapping_region_.GetEndPtr();
   }
-
-
-
-  
 
   ~CachingAllocator();
 
@@ -83,4 +80,6 @@ public:
 
   bool CheckState();
 };
+
+
 }

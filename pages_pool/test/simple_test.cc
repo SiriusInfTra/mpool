@@ -1,4 +1,5 @@
 #include "pages_list.h"
+#include "shm.h"
 #include <algorithm>
 #include <chrono>
 #include <functional>
@@ -30,10 +31,10 @@ public:
 };
 
 void run(const PagesPoolConf &conf, const std::string &name, int seed) {
-    PagesPool page_pool{conf, false};
+    SharableObject<PagesPool> page_pool{conf.shm_name, conf.shm_nbytes, conf};
 
     std::mt19937 rng{static_cast<unsigned long>(seed)};
-    auto belong = page_pool.GetBelongRegistry().GetOrCreateBelong(name);
+    auto belong = page_pool->GetBelongRegistry().GetOrCreateBelong(name);
     std::unordered_set<index_t> own_pages;
 
     for (size_t k = 0; k < 1000; ++k) {
@@ -41,12 +42,12 @@ void run(const PagesPoolConf &conf, const std::string &name, int seed) {
         num_t num_req = std::uniform_int_distribution<num_t>(1, 1_GB / conf.page_nbytes)(rng);
         double req_con = std::uniform_real_distribution<double>(0, 1)(rng);
         size_t s0 = own_pages.size();
-        auto lock = page_pool.Lock();
+        auto lock = page_pool->Lock();
         if (req_con > -20.9) {
             index_t index_begin;
             {
                 Recorder recorder{"AllocConPages"};
-                index_begin = page_pool.AllocConPages(belong, num_req, lock);
+                index_begin = page_pool->AllocConPages(belong, num_req, lock);
             }
             DLOG(INFO) << index_begin;
             if (index_begin != PagesPool::INSUFFICIENT_PAGE) {
@@ -56,7 +57,7 @@ void run(const PagesPoolConf &conf, const std::string &name, int seed) {
                 }
             }
         } else {
-            auto pages = page_pool.AllocDisPages(belong, num_req, lock);
+            auto pages = page_pool->AllocDisPages(belong, num_req, lock);
             for (index_t index : pages) {
                 auto [_, succ] = own_pages.insert(index);
                 CHECK(succ);
@@ -69,7 +70,7 @@ void run(const PagesPoolConf &conf, const std::string &name, int seed) {
             std::shuffle(vv.begin(), vv.end(), rng);
             {
                 Recorder recorder{"FreePages"};
-                page_pool.FreePages(vv, belong, lock);
+                page_pool->FreePages(vv, belong, lock);
             }
             own_pages.clear();
             DLOG(INFO) << "OOM clean.";
@@ -91,7 +92,7 @@ int main() {
     };
     PagesPool::RemoveShm(conf);
     std::thread kTrain{run, std::ref(conf), "train", 42};   
-    std::thread kInfer{run, std::ref(conf), "infer", 43};
+    // std::thread kInfer{run, std::ref(conf), "infer", 43};
     kTrain.join();
-    kInfer.join();
+    // kInfer.join();
 }

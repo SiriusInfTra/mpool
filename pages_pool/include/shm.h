@@ -22,6 +22,7 @@ using bip_mutex = bip::interprocess_mutex;
 class SharedMemory {
 public:
   const std::string name;
+
 private:
   bip::managed_shared_memory shared_memory;
 
@@ -32,8 +33,6 @@ private:
   bool is_deinit_ = false;
 
 public:
-
-
   SharedMemory(std::string name, size_t nbytes)
       : name(name), shared_memory(bip::open_or_create, name.c_str(), nbytes) {
     auto init_func = [&]() {
@@ -58,15 +57,42 @@ public:
     bool last_deinit = --(*ref_count_) == 0;
     deinit_func(last_deinit);
     if (last_deinit) {
-        lock.unlock();
-        bip::shared_memory_object::remove(name.c_str());
+      lock.unlock();
+      bip::shared_memory_object::remove(name.c_str());
     }
+    is_deinit_ = true;
   }
 
   bip_mutex &GetMutex() { return *mutex_; }
 
-  ~SharedMemory() {
-    CHECK(is_deinit_);
+  ~SharedMemory() { CHECK(is_deinit_); }
+};
+
+template <typename T> class 
+SharableObject {
+private:
+  SharedMemory shared_memory_;
+  T *object_;
+
+public:
+  
+  template<typename ... Args>
+  SharableObject(
+      std::string name, size_t nbytes,
+      Args && ... args)
+      : shared_memory_(name, nbytes) {
+    shared_memory_.OnInit([&](bool first_init) {
+      object_ = new T(shared_memory_, args..., first_init);
+    });
+  }
+
+  T *operator->() { return object_; }
+
+  T *GetObject() { return object_; }
+
+  ~SharableObject() {
+    shared_memory_.OnDeinit(
+        [&](bool last_deinit) { delete object_; object_ = nullptr; });
   }
 };
 
@@ -76,7 +102,8 @@ private:
 
 public:
   shm_handle(T *t, bip_shm &shm) : handle_(shm.get_handle_from_address(t)) {}
-  shm_handle(T *t, SharedMemory &shm) : handle_(shm->get_handle_from_address(t)) {}
+  shm_handle(T *t, SharedMemory &shm)
+      : handle_(shm->get_handle_from_address(t)) {}
 
   T *ptr(bip_shm &shm) const {
     return reinterpret_cast<T *>(shm.get_address_from_handle(handle_));

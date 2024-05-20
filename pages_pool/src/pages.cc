@@ -1,3 +1,4 @@
+#include "shm.h"
 #include <atomic>
 #include <thread>
 #include <util.h>
@@ -157,10 +158,10 @@ void HandleTransfer::ExportWorker() {
     LOG(INFO) << "[mempool] Master exit watting for request.";
 }
 
-HandleTransfer::HandleTransfer(bip_shm &shm,
+HandleTransfer::HandleTransfer(SharedMemory &shared_memory,
                 const PagesPoolConf &conf,
                 std::vector<PhyPage> &ref_phy_pages
-) : shared_memory_(shm),
+) : shared_memory_(shared_memory),
     phy_mem_list_(ref_phy_pages),
     phy_pages_num_(conf.pool_nbytes / conf.page_nbytes), 
     phy_pages_nbytes_(conf.page_nbytes)

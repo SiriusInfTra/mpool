@@ -4,6 +4,8 @@ from threading import local
 import contextvars
 import torch
 from ._C import *
+import cupy_integrate
+import numba_integrate
 
 import dataclasses
 

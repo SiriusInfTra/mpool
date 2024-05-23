@@ -1,5 +1,6 @@
 #pragma once
 
+#include "belong.h"
 #include <atomic>
 
 #include <boost/container/list.hpp>
@@ -51,7 +52,7 @@ private:
   std::string client_sock_name_;
   MessageQueue message_queue_;
   std::vector<PhyPage> &phy_pages_ref_;
-  Belong *shm_belong_list_;
+  shm_handle<BelongImpl> *shm_belong_list_;
   std::thread export_handle_thread_;
   const size_t pages_num_;
   const size_t page_nbytes_;

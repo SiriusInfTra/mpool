@@ -103,6 +103,8 @@ private:
   bip_shm::handle_t handle_;
 
 public:
+  shm_handle() : handle_(reinterpret_cast<bip_shm::handle_t>(nullptr)) {}
+  shm_handle(bip_shm::handle_t handle) : handle_(handle) {}
   shm_handle(T *t, bip_shm &shm) : handle_(shm.get_handle_from_address(t)) {}
   shm_handle(T *t, SharedMemory &shm)
       : handle_(shm->get_handle_from_address(t)) {}
@@ -112,6 +114,10 @@ public:
   }
   T *ptr(SharedMemory &shm) const {
     return reinterpret_cast<T *>(shm->get_address_from_handle(handle_));
+  }
+
+  bool operator==(const shm_handle<T>& rhs) const {
+    return this->handle_ == rhs.handle_;
   }
 };
 

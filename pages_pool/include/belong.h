@@ -16,88 +16,104 @@
 
 namespace mpool {
 struct BelongImpl {
-    const index_t      index;
-    const std::string  name;
-    std::atomic<num_t> pages_num;
+  const index_t index;
+  const std::string name;
+  std::atomic<num_t> pages_num;
+
+  friend std::ostream &operator<<(std::ostream &out, const BelongImpl &impl) {
+    out << impl.name;
+    return out;
+  }
 };
 
 class Belong {
-    friend class PagesPool;
+  friend class PagesPool;
+
 private:
-    BelongImpl *impl_;
+  SharedMemory &shared_memory_;
+  shm_handle<BelongImpl> handle_;
+
 public:
-    Belong(BelongImpl *impl = nullptr): impl_(impl) {}
+  Belong(shm_handle<BelongImpl> handle, SharedMemory &shared_memory)
+      : shared_memory_(shared_memory), handle_(handle) {}
+  Belong(BelongImpl *impl, SharedMemory &shared_memory)
+      : shared_memory_(shared_memory), handle_{impl, shared_memory} {}
 
-    num_t GetPagesNum() const {
-        return impl_->pages_num.load(std::memory_order_relaxed);
-    }
+  BelongImpl *Get() { return handle_.ptr(shared_memory_); }
 
-    index_t GetIndex() const {
-        return impl_->index;
-    }
+  const BelongImpl *Get() const { return handle_.ptr(shared_memory_); }
 
-    const std::string &GetName() const {
-        return impl_->name;
-    }
+  num_t GetPagesNum() const {
+    return Get()->pages_num.load(std::memory_order_relaxed);
+  }
 
-    bool operator==(const Belong& rhs) const {
-        auto ptr = dynamic_cast<const Belong*>(&rhs); 
-        if (ptr != nullptr) {
-            return impl_->index == ptr->impl_->index;
-        } 
-        return false;
-    }
+  index_t GetIndex() const { return Get()->index; }
 
-    friend std::ostream& operator<<(std::ostream& out, const Belong &belong)  {
-        out << belong.impl_->name;
-        return out;
-    }
+  const std::string &GetName() const { return Get()->name; }
+
+  bool operator==(const Belong &rhs) const {
+    return this->handle_ == rhs.handle_;
+  }
+
+  bool operator==(const shm_handle<BelongImpl> &rhs) const {
+    return this->handle_ == rhs;
+  }
+
+  operator shm_handle<BelongImpl>() const { return handle_; }
+
+  friend std::ostream &operator<<(std::ostream &out, const Belong &belong) {
+    out << belong.Get()->name;
+    return out;
+  }
 };
-
 
 class BelongRegistry {
 private:
-    SharedMemory &shared_memory_;
-    bip_vector<shm_handle<BelongImpl>> *registered_belongs;
-    bip::interprocess_sharable_mutex *mutex;
-    BelongImpl *kFreeBelong;
+  SharedMemory &shared_memory_;
+  bip_vector<shm_handle<BelongImpl>> *registered_belongs;
+  bip::interprocess_sharable_mutex *mutex;
+  BelongImpl *kFreeBelong;
 
-    BelongImpl *CreateBelong(size_t index, std::string name) {
-        auto *belong_impl = shared_memory_->allocate(sizeof(BelongImpl));
-        return new (belong_impl) BelongImpl{index, name, 0};
-    }
+  BelongImpl *CreateBelong(size_t index, std::string name) {
+    auto *belong_impl = shared_memory_->allocate(sizeof(BelongImpl));
+    return new (belong_impl) BelongImpl{index, name, 0};
+  }
 
 public:
-    BelongRegistry(SharedMemory &shared_memory): shared_memory_(shared_memory) {}
+  BelongRegistry(SharedMemory &shared_memory) : shared_memory_(shared_memory) {}
 
-    void Init() {  
-        registered_belongs = shared_memory_->find_or_construct<bip_vector<shm_handle<BelongImpl>>>
-            ("BR_registered_belongs")(shared_memory_->get_segment_manager());
-        mutex = shared_memory_->find_or_construct<bip::interprocess_sharable_mutex>("BR_mutex")();
-        bip::scoped_lock lock{*mutex};
-        if (registered_belongs->empty()) {
-            kFreeBelong = CreateBelong(0, "FREE");
-            registered_belongs->emplace_back(kFreeBelong, shared_memory_);
-        } else {
-            kFreeBelong = registered_belongs->front().ptr(shared_memory_);
-        }
+  void Init() {
+    registered_belongs =
+        shared_memory_->find_or_construct<bip_vector<shm_handle<BelongImpl>>>(
+            "BR_registered_belongs")(shared_memory_->get_segment_manager());
+    mutex = shared_memory_->find_or_construct<bip::interprocess_sharable_mutex>(
+        "BR_mutex")();
+    bip::scoped_lock lock{*mutex};
+    if (registered_belongs->empty()) {
+      kFreeBelong = CreateBelong(0, "FREE");
+      registered_belongs->emplace_back(kFreeBelong, shared_memory_);
+    } else {
+      kFreeBelong = registered_belongs->front().ptr(shared_memory_);
     }
+  }
 
-    Belong GetOrCreateBelong(const std::string &name) {
-        bip::scoped_lock lock{*mutex};
-        for (auto handle : *registered_belongs) {
-            auto *belong = handle.ptr(shared_memory_);
-            if (belong->name == name) {
-                return belong;
-            }
-        }
-        auto *belong = CreateBelong(registered_belongs->size(), name);
-        registered_belongs->emplace_back(belong, shared_memory_);
-        return belong;
+  Belong GetOrCreateBelong(const std::string &name) {
+    bip::scoped_lock lock{*mutex};
+    for (auto handle : *registered_belongs) {
+      auto *belong = handle.ptr(shared_memory_);
+      if (belong->name == name) {
+        return {belong, shared_memory_};
+      }
     }
+    auto *belong = CreateBelong(registered_belongs->size(), name);
+    registered_belongs->emplace_back(belong, shared_memory_);
+    return {belong, shared_memory_};
+  }
 
-    Belong GetFreeBelong() const {
-        return kFreeBelong;
-    }
+  Belong GetBelong(shm_handle<BelongImpl> handle) {
+    return {handle, shared_memory_};
+  }
+
+  Belong GetFreeBelong() const { return {kFreeBelong, shared_memory_}; }
 };
-}
+} // namespace mpool

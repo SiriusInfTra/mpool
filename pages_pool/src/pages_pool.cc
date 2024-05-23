@@ -48,10 +48,10 @@ index_t PagesPool::AllocConPages(Belong blg, num_t num_req, bip::scoped_lock<bip
     free_list_.ClaimPages(index_begin, num_req);
     for (size_t k = 0; k < num_req; ++k) {
         auto &phy_page = phy_pages[index_begin + k];
-        CHECK_EQ(*phy_page.belong, belong_registery_.GetFreeBelong());
+        CHECK_EQ(belong_registery_.GetFreeBelong(), belong_registery_.GetBelong(*phy_page.belong));
         *phy_page.belong = blg;
     }
-    blg.impl_->pages_num.fetch_add(num_req, std::memory_order_relaxed);
+    blg.Get()->pages_num.fetch_add(num_req, std::memory_order_relaxed);
     return index_begin;
 }
 std::vector<index_t> PagesPool::AllocDisPages(Belong blg, num_t num_req, bip::scoped_lock<bip_mutex> &lock) {
@@ -64,11 +64,11 @@ std::vector<index_t> PagesPool::AllocDisPages(Belong blg, num_t num_req, bip::sc
         if (index == FreeList::INVALID_POS) { break; }
         auto &phy_page = phy_pages[index];
         free_list_.ClaimPages(index);
-        CHECK_EQ(*phy_page.belong, belong_registery_.GetFreeBelong());
+        CHECK_EQ(belong_registery_.GetBelong(*phy_page.belong), belong_registery_.GetFreeBelong());
         *phy_page.belong = blg;
         ret.push_back(index);
     }
-    blg.impl_->pages_num.fetch_add(ret.size(), std::memory_order_relaxed);
+    blg.Get()->pages_num.fetch_add(ret.size(), std::memory_order_relaxed);
     return ret;
 }
 
@@ -76,11 +76,11 @@ void PagesPool::FreePages(const std::vector<index_t> &pages, Belong blg, bip::sc
     CHECK(lock.owns());
     for (index_t index: pages) {
         auto &page = phy_pages[index];
-        CHECK_EQ(*page.belong, blg);
+        CHECK_EQ(belong_registery_.GetBelong(*page.belong), blg);
         *page.belong = belong_registery_.GetFreeBelong();
         free_list_.ReleasePages(index, 1);
     }
-    blg.impl_->pages_num.fetch_sub(pages.size(), std::memory_order_relaxed);
+    blg.Get()->pages_num.fetch_sub(pages.size(), std::memory_order_relaxed);
 }
 
 // void PagesPool::FreePages(index_t index_begin, num_t pages_len, Belong blg, bip::scoped_lock<bip_mutex> &lock) {

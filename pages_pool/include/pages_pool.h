@@ -1,4 +1,5 @@
 #pragma once
+#include "cuda_handle.h"
 #include <boost/interprocess/sync/scoped_lock.hpp>
 #include <memory>
 #include <string>
@@ -29,7 +30,7 @@ private:
     std::vector<PhyPage>    phy_pages;
     
     FreeList                free_list_;
-    HandleTransfer          handle_transfer_;
+    CUDAIpcTransfer          handle_transfer_;
     BelongRegistry          belong_registery_;
 public:
     static bool RemoveShm(const PagesPoolConf &config) {

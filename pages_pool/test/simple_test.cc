@@ -92,7 +92,7 @@ int main() {
     };
     PagesPool::RemoveShm(conf);
     std::thread kTrain{run, std::ref(conf), "train", 42};   
-    // std::thread kInfer{run, std::ref(conf), "infer", 43};
+    std::thread kInfer{run, std::ref(conf), "infer", 43};
     kTrain.join();
-    // kInfer.join();
+    kInfer.join();
 }

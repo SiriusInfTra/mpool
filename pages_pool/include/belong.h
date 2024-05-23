@@ -26,7 +26,7 @@ class Belong {
 private:
     BelongImpl *impl_;
 public:
-    Belong(BelongImpl *impl): impl_(impl) {}
+    Belong(BelongImpl *impl = nullptr): impl_(impl) {}
 
     num_t GetPagesNum() const {
         return impl_->pages_num.load(std::memory_order_relaxed);

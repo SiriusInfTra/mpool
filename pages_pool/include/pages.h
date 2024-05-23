@@ -19,7 +19,7 @@ namespace mpool {
 namespace bip = boost::interprocess;
 
 const static constexpr unsigned VERBOSE_LEVEL = 0; /* 0 ~ 2*/
-const static constexpr unsigned CHECK_LEVEL = 1; /*0 ~ 3 */
+const static constexpr unsigned CHECK_LEVEL = 1; /* 0 ~ 3 */
 
 struct PagesPoolConf {
         size_t page_nbytes;
@@ -30,9 +30,9 @@ struct PagesPoolConf {
 };
 
 struct PhyPage {
-        const size_t index;
-        const CUmemGenericAllocationHandle cu_handle;
-        Belong * const belong;
+    const size_t index;
+    const CUmemGenericAllocationHandle cu_handle;
+    Belong * const belong;
 };
 
 inline std::ostream& operator<<(std::ostream& out, const PhyPage &page)    {

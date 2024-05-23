@@ -5,6 +5,7 @@
 #include <boost/interprocess/creation_tags.hpp>
 #include <boost/interprocess/interprocess_fwd.hpp>
 #include <boost/interprocess/managed_shared_memory.hpp>
+#include <boost/interprocess/sync/interprocess_condition.hpp>
 #include <boost/unordered/unordered_map_fwd.hpp>
 #include <functional>
 #include <glog/logging.h>
@@ -18,6 +19,7 @@ using bip_shm = bip::managed_shared_memory;
 template <class Mutex> using bip_lock = bip::scoped_lock<Mutex>;
 
 using bip_mutex = bip::interprocess_mutex;
+using bip_cond = bip::interprocess_condition;
 
 class SharedMemory {
 public:
@@ -122,7 +124,6 @@ template <typename Key, typename Value>
 using bip_multimap = boost::container::multimap<
     Key, Value, std::less<Key>,
     bip::allocator<std::pair<const Key, Value>, bip_shm::segment_manager>>;
-
 template <typename Key, typename Value>
 using bip_unordered_map = boost::unordered_map<
     Key, Value, boost::hash<Key>, std::equal_to<Key>,

@@ -22,7 +22,7 @@ namespace mpool {
 
 
 PagesPool::PagesPool(SharedMemory &shared_memory, PagesPoolConf conf, bool first_init): config(std::move(conf)), shared_memory_(shared_memory),
-    free_list_(shared_memory_), handle_transfer_(shared_memory_, config, phy_pages),
+    free_list_(shared_memory_), handle_transfer_(shared_memory_, phy_pages, config),
     belong_registery_(shared_memory_)
 {
     CU_CALL(cuInit(0));
@@ -32,7 +32,7 @@ PagesPool::PagesPool(SharedMemory &shared_memory, PagesPoolConf conf, bool first
         handle_transfer_.InitMaster(belong_registery_.GetFreeBelong());
     } else {
         LOG(INFO) << config.log_prefix << "Init mirror";
-        handle_transfer_.InitSlave(belong_registery_.GetFreeBelong());
+        handle_transfer_.InitMirror();
     }
 
     free_list_.Init(config.pool_nbytes / config.page_nbytes);

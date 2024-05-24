@@ -92,6 +92,8 @@ public:
 
   T *GetObject() { return object_; }
 
+  operator T*() { return object_; }
+
   ~SharableObject() {
     shared_memory_.OnDeinit(
         [&](bool last_deinit) { delete object_; object_ = nullptr; });

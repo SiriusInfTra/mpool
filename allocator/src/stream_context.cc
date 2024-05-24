@@ -53,6 +53,7 @@ MemBlock *StreamBlockList::GetNextEntry(MemBlock *entry) {
 
 MemBlock *StreamBlockList::SplitBlock(MemBlock *origin_entry, size_t remain) {
   CHECK_GT(origin_entry->nbytes, remain);
+  CHECK_EQ(origin_entry->ref_count, 0);
   /* [origin: remain] [insert_after_entry: nbytes - remain] */
   auto *insert_after_entry = new (shared_memory_->allocate(sizeof(MemBlock)))
       MemBlock{.addr_offset =
@@ -60,7 +61,8 @@ MemBlock *StreamBlockList::SplitBlock(MemBlock *origin_entry, size_t remain) {
                .nbytes = origin_entry->nbytes - remain,
                .stream = origin_entry->stream,
                .is_free = origin_entry->is_free,
-               .is_small = origin_entry->is_small};
+               .is_small = origin_entry->is_small,
+               .ref_count = 0};
   shm_handle insert_after_entry_handle{insert_after_entry, shared_memory_};
   insert_after_entry->iter_all_block_list = all_block_list_.insert(
       std::next(origin_entry->iter_all_block_list), insert_after_entry_handle);
@@ -86,6 +88,8 @@ MemBlock *StreamBlockList::MergeMemEntry(MemBlock *first_block,
            secound_block->addr_offset);
   CHECK_EQ(first_block->is_free, secound_block->is_free);
   CHECK_EQ(first_block->is_small, secound_block->is_small);
+  CHECK_EQ(first_block->ref_count, 0);
+  CHECK_EQ(secound_block->ref_count, 0);
 
   first_block->nbytes += secound_block->nbytes;
   if (first_block->unalloc_pages > 0 || secound_block->unalloc_pages > 0) {
@@ -145,6 +149,7 @@ MemBlock *StreamFreeList::PopBlock(bool is_small, size_t nbytes,
     // split_block->iter_free_block_list = free_list.insert(std::make_pair(
     // split_block->nbytes, shm_handle{split_block, shared_memory_}));
   }
+  CHECK_EQ(block->ref_count, 0);
   return block;
 }
 

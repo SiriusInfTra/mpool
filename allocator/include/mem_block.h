@@ -19,6 +19,7 @@ struct MemBlock {
   int32_t unalloc_pages;
   bool is_free;
   bool is_small;
+  int32_t ref_count;
 
   bip_list<shm_handle<MemBlock>>::iterator iter_all_block_list;
   bip_list<shm_handle<MemBlock>>::iterator iter_stream_block_list;

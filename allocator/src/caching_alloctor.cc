@@ -51,6 +51,7 @@ CachingAllocator::~CachingAllocator() {}
 
 MemBlock *CachingAllocator::Alloc(size_t nbytes, cudaStream_t cuda_stream,
                                   bool try_expand_VA) {
+  bip::scoped_lock lock{shared_memory_.GetMutex()};
   nbytes = (nbytes + config.align_nbytes - 1) & ~(config.align_nbytes - 1);
   auto &stream_context = GetStreamContext(cuda_stream);
   auto *block = AllocWithContext(nbytes, stream_context);
@@ -72,11 +73,17 @@ MemBlock *CachingAllocator::Alloc(size_t nbytes, cudaStream_t cuda_stream,
     mapping_region_.EnsureBlockWithPage(block, all_block_list_);
   }
   CHECK(CHECK_LEVEL < 1 || CheckState());
+  block->ref_count += 1;
   return block;
 }
 
 void CachingAllocator::Free(const MemBlock *block0) {
   auto *block = const_cast<MemBlock*>(block0);
+  LOG_IF(INFO, VERBOSE_LEVEL > 2) << config.log_prefix << "Free block " << block;
+  bip::scoped_lock lock{shared_memory_.GetMutex()};
+  if (--block->ref_count > 0) {
+    return;
+  }
   auto &context = GetStreamContext(block->stream);
   CHECK(!block->is_free) << block;
   CHECK(CHECK_LEVEL < 3 || CheckState());
@@ -116,6 +123,7 @@ void CachingAllocator::EmptyCache() {
   LOG_IF(INFO, VERBOSE_LEVEL) << config.log_prefix << "Release free physical memory.";
   // auto &context = GetStreamContext(cuda_stream);
   // context.stream_block_list.EmptyCache();
+  bip::scoped_lock lock{shared_memory_.GetMutex()};
   mapping_region_.EmptyCache(all_block_list_);
   for (auto &[_, handle] : stream_context_map_) {
     auto stream_context = handle.ptr(shared_memory_);

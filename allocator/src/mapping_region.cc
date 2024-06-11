@@ -1,23 +1,47 @@
-#include <mapping_region.h>
-
+#include "pages.h"
+#include "util.h"
+#include <algorithm>
+#include <boost/interprocess/containers/vector.hpp>
 #include <cuda.h>
 #include <glog/logging.h>
+#include <limits>
+#include <mapping_region.h>
 
 namespace mpool {
+
+MappingRegion::MappingRegion(SharedMemory &shared_memory, PagesPool &page_pool,
+                             Belong belong, std::string log_prefix,
+                             size_t va_range_scale)
+    : log_prefix(log_prefix), mem_block_nbytes(page_pool.config.page_nbytes),
+      mem_block_num(page_pool.config.pool_nbytes /
+                    page_pool.config.page_nbytes),
+      va_range_scale(va_range_scale), belong(belong),
+      shared_memory_(shared_memory),
+      shared_global_mappings_(
+          *shared_memory->find_or_construct<bip_vector<index_t>>(
+              "ME_shared_global_mappings")(
+              shared_memory->get_segment_manager())),
+      page_pool_(page_pool) {
+  CU_CALL(cuMemAddressReserve(reinterpret_cast<CUdeviceptr *>(&base_ptr_),
+                              mem_block_nbytes * mem_block_num * va_range_scale,
+                              mem_block_nbytes, 0, 0));
+  LOG(INFO) << log_prefix << "dev_ptr = " << base_ptr_ << ".";
+}
+
 std::pair<index_t, index_t>
-MappingRegion::MappingPageRange(ptrdiff_t addr_offset, size_t nbytes) const {
+MappingRegion::GetPageVirtualIndexRange(ptrdiff_t addr_offset,
+                                        size_t nbytes) const {
   index_t index_begin = addr_offset / mem_block_nbytes;
   index_t index_end =
       (addr_offset + nbytes + mem_block_nbytes - 1) / mem_block_nbytes;
   return {index_begin, index_end};
 }
 
-
-index_t MappingRegion::GetMappingPage(ptrdiff_t addr_offset) const {
+index_t MappingRegion::GetVirtualIndex(ptrdiff_t addr_offset) const {
   return addr_offset / mem_block_nbytes;
 }
 
-void MappingRegion::EnsureBlockWithPage(
+void MappingRegion::EnsureMemBlockWithMappings(
     MemBlock *block, bip_list<shm_handle<MemBlock>> &all_block_list) {
   CHECK_LE(block->addr_offset + block->nbytes,
            mem_block_nbytes * mem_block_num * va_range_scale);
@@ -25,16 +49,17 @@ void MappingRegion::EnsureBlockWithPage(
   if (block->unalloc_pages == 0) {
     return;
   }
-  auto [index_begin, index_end] =
-      MappingPageRange(block->addr_offset, block->nbytes);
-  
+  index_t va_range_l_i = PAGE_INDEX_L(block);
+  index_t va_range_r_closed_i = PAGE_INDEX_R(block);
+
   /* 2. find missing pages mapping index. */
   std::vector<index_t> missing_pages_mapping_index;
-  if (mapping_pages_.size() < index_end) {
-    mapping_pages_.resize(index_end, nullptr);
+  if (shared_global_mappings_.size() <= va_range_r_closed_i) {
+    shared_global_mappings_.resize(va_range_r_closed_i + 1, INVALID_INDEX);
   }
-  for (index_t index = index_begin; index < index_end; ++index) {
-    if (mapping_pages_[index] == nullptr) {
+
+  for (index_t index = va_range_l_i; index <= va_range_r_closed_i; ++index) {
+    if (shared_global_mappings_[index] == INVALID_INDEX) {
       missing_pages_mapping_index.push_back(index);
     }
   }
@@ -48,73 +73,81 @@ void MappingRegion::EnsureBlockWithPage(
         belong, missing_pages_mapping_index.size(), lock);
   }
   CHECK_EQ(assign_phy_pages_index.size(), missing_pages_mapping_index.size());
-  for (size_t k = 0; k < missing_pages_mapping_index.size(); ++k) {
-    CU_CALL(cuMemMap(
-        reinterpret_cast<CUdeviceptr>(
-            base_ptr_ + missing_pages_mapping_index[k] * mem_block_nbytes),
-        mem_block_nbytes, 0,
-        page_pool_.PagesView()[assign_phy_pages_index[k]].cu_handle, 0));
-    mapping_pages_[missing_pages_mapping_index[k]] =
-        &page_pool_.PagesView()[assign_phy_pages_index[k]];
+  for (index_t k = 0; k < assign_phy_pages_index.size(); ++k) {
+    shared_global_mappings_[missing_pages_mapping_index[k]] =
+        assign_phy_pages_index[k];
+    LOG(INFO) << "alloc " << assign_phy_pages_index[k];
   }
 
   /* 4. modify page table */
-  ptrdiff_t addr_offset;
-  size_t nbytes;
-  if (std::adjacent_find(missing_pages_mapping_index.begin(),
-                         missing_pages_mapping_index.end(),
-                         [](index_t a, index_t b) { return b != a + 1; }) ==
-      missing_pages_mapping_index.end()) {
-    addr_offset = missing_pages_mapping_index.front() * mem_block_nbytes;
-    nbytes = missing_pages_mapping_index.size() * mem_block_nbytes;
-  } else {
-    addr_offset = index_begin * mem_block_nbytes;
-    nbytes = (index_end - index_begin) * mem_block_nbytes;
+  if (self_page_table_.size() <= va_range_r_closed_i) {
+    self_page_table_.resize(va_range_r_closed_i + 1, nullptr);
   }
-  CUmemAccessDesc acc_desc = {
-      .location = {.type = CU_MEM_LOCATION_TYPE_DEVICE, .id = 0},
-      .flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE};
-  CU_CALL(cuMemSetAccess(reinterpret_cast<CUdeviceptr>(base_ptr_ + addr_offset),
-                         nbytes, &acc_desc, 1));
-  
+  index_t min_va_i = std::numeric_limits<index_t>::max();
+  index_t max_va_i = std::numeric_limits<index_t>::min();
+  for (index_t k = va_range_l_i; k <= va_range_r_closed_i; ++k) {
+    if (self_page_table_[k] == nullptr) {
+      auto &page = page_pool_.PagesView()[shared_global_mappings_[k]];
+      self_page_table_[k] = &page;
+      CHECK_EQ(belong, Belong(*page.belong, shared_memory_));
+      CU_CALL(cuMemMap(
+          reinterpret_cast<CUdeviceptr>(base_ptr_ + k * mem_block_nbytes),
+          mem_block_nbytes, 0, page.cu_handle, 0));
+      min_va_i = std::min(min_va_i, k);
+      max_va_i = std::max(max_va_i, k);
+    }
+    CHECK_EQ(self_page_table_[k]->index, shared_global_mappings_[k]);
+  }
+  if (max_va_i < std::numeric_limits<index_t>::max()) {
+    auto *dev_ptr = base_ptr_ + min_va_i * mem_block_nbytes;
+    size_t nbytes = (max_va_i - min_va_i + 1) * mem_block_nbytes;
+    CUmemAccessDesc acc_desc = {
+        .location = {.type = CU_MEM_LOCATION_TYPE_DEVICE, .id = 0},
+        .flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE};
+    CU_CALL(cuMemSetAccess(reinterpret_cast<CUdeviceptr>(dev_ptr), nbytes,
+                           &acc_desc, 1));
+  }
+
   /* 5. update memory block unalloc_pages flag */
-    CHECK(!missing_pages_mapping_index.empty())
+  CHECK(!missing_pages_mapping_index.empty())
       << missing_pages_mapping_index.size();
   block->unalloc_pages = 0;
   auto next_iter = std::next(block->iter_all_block_list);
   while (next_iter != all_block_list.cend()) {
     auto *next_block = next_iter->ptr(shared_memory_);
-    if (GetMappingPage(next_block->addr_offset) > missing_pages_mapping_index.back()) {
+    if (GetVirtualIndex(next_block->addr_offset) >
+        missing_pages_mapping_index.back()) {
       break;
     }
     DCHECK_GE(next_block->unalloc_pages, 1);
     next_block->unalloc_pages--;
-    DCHECK_EQ(next_block->unalloc_pages, GetUnallocPages(next_block->addr_offset,
-                                             next_block->nbytes)) <<
-                                             next_block;
+    DCHECK_EQ(next_block->unalloc_pages,
+              GetUnallocPages(next_block->addr_offset, next_block->nbytes))
+        << next_block;
     next_iter++;
   }
   auto prev_iter = block->iter_all_block_list;
   while (prev_iter != all_block_list.cbegin()) {
     --prev_iter;
     auto *prev_block = prev_iter->ptr(shared_memory_);
-    if (GetMappingPage(prev_block->addr_offset + prev_block->nbytes - 1) < missing_pages_mapping_index.front()) {
+    if (GetVirtualIndex(prev_block->addr_offset + prev_block->nbytes - 1) <
+        missing_pages_mapping_index.front()) {
       break;
     }
     DCHECK_GE(prev_block->unalloc_pages, 1);
     prev_block->unalloc_pages--;
-    DCHECK_EQ(prev_block->unalloc_pages, GetUnallocPages(prev_block->addr_offset,
-                                             prev_block->nbytes)) <<
-                                             prev_block;
+    DCHECK_EQ(prev_block->unalloc_pages,
+              GetUnallocPages(prev_block->addr_offset, prev_block->nbytes))
+        << prev_block;
   }
 }
 
 int32_t MappingRegion::GetUnallocPages(ptrdiff_t addr_offset, size_t nbytes) {
-  auto [index_begin, index_end] = MappingPageRange(addr_offset, nbytes);
-  size_t ub = std::min(index_end, mapping_pages_.size());
+  auto [index_begin, index_end] = GetPageVirtualIndexRange(addr_offset, nbytes);
+  size_t ub = std::min(index_end, shared_global_mappings_.size());
   int32_t unalloc_pages = std::min(index_end - index_begin, index_end - ub);
   for (index_t index = index_begin; index < ub; ++index) {
-    if (mapping_pages_[index] == nullptr) {
+    if (shared_global_mappings_[index] == INVALID_INDEX) {
       unalloc_pages++;
     }
   }
@@ -128,9 +161,8 @@ void MappingRegion::UnMapPages(const std::vector<index_t> &release_pages) {
   {
     std::vector<index_t> pages;
     for (index_t mapping_index : release_pages) {
-      index_t page_index = mapping_pages_[mapping_index]->index;
-      mapping_pages_[mapping_index] = nullptr;
-
+      index_t page_index = self_page_table_[mapping_index]->index;
+      self_page_table_[mapping_index] = nullptr;
       pages.push_back(page_index);
     }
     auto lock = page_pool_.Lock();
@@ -161,22 +193,23 @@ void MappingRegion::UnMapPages(const std::vector<index_t> &release_pages) {
   } while (iter != release_pages.cend());
 }
 void MappingRegion::EmptyCache(bip_list<shm_handle<MemBlock>> &block_list) {
+  LOG_IF(INFO, VERBOSE_LEVEL >= 0) << "EmptyCache";
   std::vector<index_t> release_pages;
   auto iter = block_list.begin();
   auto block = iter->ptr(shared_memory_);
-  for (index_t mapping_index = 0; mapping_index < mapping_pages_.size();) {
-    if (mapping_pages_[mapping_index] == nullptr) {
+  for (index_t mapping_index = 0; mapping_index < self_page_table_.size();) {
+    if (self_page_table_[mapping_index] == nullptr) {
       mapping_index++;
       continue;
     }
 
-    if (index_t block_mapping_index_begin = GetMappingPage(block->addr_offset);
+    if (index_t block_mapping_index_begin = GetVirtualIndex(block->addr_offset);
         block_mapping_index_begin > mapping_index) {
       mapping_index = block_mapping_index_begin;
       continue;
     }
 
-    while (GetMappingPage(block->addr_offset + block->nbytes - 1) <
+    while (GetVirtualIndex(block->addr_offset + block->nbytes - 1) <
            mapping_index) {
       iter++;
       block = iter->ptr(shared_memory_);
@@ -207,12 +240,12 @@ void MappingRegion::EmptyCache(bip_list<shm_handle<MemBlock>> &block_list) {
     }
     /* 3. release page if free and update block's unalloc page. */
     if (page_is_free) {
+      shared_global_mappings_[mapping_index] = INVALID_INDEX;
       release_pages.push_back(mapping_index);
       for (auto block1 : blocks_with_pages) {
         block1->unalloc_pages++;
       }
     }
-
     mapping_index++;
   }
   UnMapPages(release_pages);

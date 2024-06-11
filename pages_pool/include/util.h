@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <iomanip>
+#include <limits>
 #include <string>
 
 #define CUDA_CALL(func) do { \
@@ -28,6 +29,7 @@ namespace mpool {
 using nbytes_t = size_t;
 using num_t = size_t;
 using index_t = size_t;
+const constexpr index_t INVALID_INDEX = std::numeric_limits<index_t>::max();
 
 inline std::string ByteDisplay(size_t nbytes) {
   std::stringstream ss;

@@ -46,6 +46,10 @@ public:
         return belong_registery_.GetOrCreateBelong(name);
     }
 
+    PhyPage* RetainPage(index_t index, Belong blg) {
+        return nullptr; /*TODO */
+    }
+    
     index_t AllocConPages(Belong blg, num_t num_req, bip::scoped_lock<bip_mutex> &lock);
 
     std::vector<index_t> AllocDisPages(Belong blg, num_t num_req, bip::scoped_lock<bip_mutex> &lock);

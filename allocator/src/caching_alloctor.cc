@@ -10,27 +10,16 @@
 
 #include <glog/logging.h>
 
-
 namespace mpool {
 
-MappingRegion::MappingRegion(SharedMemory &shared_memory, PagesPool &page_pool,
-                             Belong belong, std::string log_prefix,
-                             size_t va_range_scale)
-    : log_prefix(log_prefix), mem_block_nbytes(page_pool.config.page_nbytes),
-      mem_block_num(page_pool.config.pool_nbytes /
-                    page_pool.config.page_nbytes),
-      va_range_scale(va_range_scale), belong(belong),
-      shared_memory_(shared_memory), page_pool_(page_pool) {
-  CU_CALL(cuMemAddressReserve(reinterpret_cast<CUdeviceptr *>(&base_ptr_),
-                              mem_block_nbytes * mem_block_num * va_range_scale,
-                              mem_block_nbytes, 0, 0));
-  LOG(INFO) << log_prefix << "dev_ptr = " << base_ptr_ << ".";
-}
 
 CachingAllocator::CachingAllocator(SharedMemory &shared_memory,
                                    PagesPool &page_pool,
-                                   CachingAllocatorConfig config, bool first_init)
-    : belong(page_pool.GetBelongRegistry().GetOrCreateBelong(config.belong_name)), config(std::move(config)), page_pool_(page_pool),
+                                   CachingAllocatorConfig config,
+                                   bool first_init)
+    : belong(
+          page_pool.GetBelongRegistry().GetOrCreateBelong(config.belong_name)),
+      config(std::move(config)), page_pool_(page_pool),
       shared_memory_(shared_memory),
       mapping_region_(shared_memory_, page_pool, belong,
                       this->config.log_prefix, config.va_range_scale),
@@ -70,7 +59,7 @@ MemBlock *CachingAllocator::Alloc(size_t nbytes, cudaStream_t cuda_stream,
   }
   CHECK(CHECK_LEVEL < 2 || CheckState());
   if (block != nullptr) {
-    mapping_region_.EnsureBlockWithPage(block, all_block_list_);
+    mapping_region_.EnsureMemBlockWithMappings(block, all_block_list_);
   }
   CHECK(CHECK_LEVEL < 1 || CheckState());
   block->ref_count += 1;
@@ -78,8 +67,9 @@ MemBlock *CachingAllocator::Alloc(size_t nbytes, cudaStream_t cuda_stream,
 }
 
 void CachingAllocator::Free(const MemBlock *block0) {
-  auto *block = const_cast<MemBlock*>(block0);
-  LOG_IF(INFO, VERBOSE_LEVEL > 2) << config.log_prefix << "Free block " << block;
+  auto *block = const_cast<MemBlock *>(block0);
+  LOG_IF(INFO, VERBOSE_LEVEL > 2)
+      << config.log_prefix << "Free block " << block;
   bip::scoped_lock lock{shared_memory_.GetMutex()};
   if (--block->ref_count > 0) {
     return;
@@ -120,7 +110,8 @@ void CachingAllocator::Free(const MemBlock *block0) {
   CHECK(CHECK_LEVEL < 1 || CheckState());
 }
 void CachingAllocator::EmptyCache() {
-  LOG_IF(INFO, VERBOSE_LEVEL) << config.log_prefix << "Release free physical memory.";
+  LOG_IF(INFO, VERBOSE_LEVEL)
+      << config.log_prefix << "Release free physical memory.";
   // auto &context = GetStreamContext(cuda_stream);
   // context.stream_block_list.EmptyCache();
   bip::scoped_lock lock{shared_memory_.GetMutex()};
@@ -131,7 +122,6 @@ void CachingAllocator::EmptyCache() {
   }
   CHECK(CHECK_LEVEL < 1 || CheckState());
 };
-
 
 StreamContext &CachingAllocator::GetStreamContext(cudaStream_t cuda_stream) {
   auto iter = stream_context_map_.find(cuda_stream);

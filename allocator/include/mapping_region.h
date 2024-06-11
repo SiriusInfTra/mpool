@@ -13,7 +13,7 @@
 #include <mem_block.h>
 
 #define PAGE_INDEX_L(block) ((block)->addr_offset / mem_block_nbytes)
-#define PAGE_INDEX_R(block) ((block)->addr_offset + (block)->nbytes - 1) / mem_block_nbytes
+#define PAGE_INDEX_R(block) ((((block)->addr_offset + (block)->nbytes - 1) / mem_block_nbytes) + 1)
 
 
 namespace mpool {
@@ -36,11 +36,6 @@ private:
 public:
   MappingRegion(SharedMemory &shared_memory, PagesPool &page_pool,
                 Belong belong, std::string log_prefix, size_t va_range_scale);
-
-  std::pair<index_t, index_t> GetPageVirtualIndexRange(ptrdiff_t addr_offset,
-                                               size_t nbytes) const;
-
-  
 
   index_t GetVirtualIndex(ptrdiff_t addr_offset) const;
 

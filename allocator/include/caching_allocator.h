@@ -73,6 +73,17 @@ public:
 
   MemBlock *Alloc(size_t nbytes, cudaStream_t cuda_stream,
                   bool try_expand_VA = true);
+  
+  MemBlock *ReceiveMemBlock(shm_handle<MemBlock> handle) {
+    auto *mem_block = handle.ptr(shared_memory_);
+    CHECK_GE(mem_block->addr_offset, 0) << "Invalid handle";
+    mem_block->ref_count++;
+    return mem_block;
+  }
+
+  shm_handle<MemBlock> SendMemBlock(MemBlock *mem_block) {
+    return {mem_block, shared_memory_};
+  }
 
   void Free(const MemBlock *block);
 

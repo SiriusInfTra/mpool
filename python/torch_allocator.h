@@ -2,6 +2,7 @@
 
 #include "caching_allocator.h"
 #include "mem_block.h"
+#include "shm.h"
 #include <cstddef>
 
 #include <ATen/core/TensorBody.h>
@@ -13,17 +14,18 @@
 
 namespace mpool {
 
-
 class TorchAllocator : public c10::cuda::CUDACachingAllocator::CUDAAllocator {
 public:
   CachingAllocator &_caching_allocator;
+
 private:
-  std::unordered_map<std::byte *, MemBlock*> _mem_blocks;
+  std::unordered_map<std::byte *, MemBlock *> _mem_blocks;
   std::mutex lock_;
   bool initialized_ = false;
-public:
 
-  TorchAllocator(CachingAllocator &caching_allocator): _caching_allocator(caching_allocator) {}
+public:
+  TorchAllocator(CachingAllocator &caching_allocator)
+      : _caching_allocator(caching_allocator) {}
 
   c10::DataPtr allocate(size_t nbytes) const override;
   c10::DeleterFnPtr raw_deleter() const override;
@@ -62,8 +64,14 @@ public:
   bool needsPoolSpecificPeerAccess() override;
 
   std::string name() override;
+
+  /* */
+  
+  c10::intrusive_ptr<c10::StorageImpl> ReceiveHandle(shm_handle<MemBlock> handle, size_t storage_size);
+  shm_handle<MemBlock> SendHandle(c10::StorageImpl *storage);
 };
 
 void OverridePyTorchAllocator(CachingAllocator *caching_allocator);
 
+TorchAllocator *GetTorchAllocator();
 } // namespace mpool

@@ -1,3 +1,13 @@
+#include <Python.h>
+#include <c10/cuda/CUDAGuard.h>
+#include <import.h>
+#include <longobject.h>
+#include <object.h>
+#include <torch/csrc/Exceptions.h>
+#include <torch/csrc/Storage.h>
+#include <torch/csrc/utils.h>
+
+// #include <torch/csrc/utils/python_numbers.h>
 #include "belong.h"
 #include "mem_block.h"
 #include "pages.h"
@@ -18,6 +28,8 @@
 #include <memory>
 #include <pages_pool.h>
 #include <string>
+#include <torch/csrc/utils/object_ptr.h>
+#include <torch/csrc/utils/python_numbers.h>
 #include <type_traits>
 #include <unordered_map>
 
@@ -61,14 +73,72 @@ void RegisterPagesPool(py::module &m) {
       .attr("INSUFFICIENT_PAGE") = PagesPool::INSUFFICIENT_PAGE;
 }
 
-void RegisterCachingAllocator(py::module &m) {
+static PyObject *THPStorage_newSharedCuda(PyObject *_unused, PyObject *args) {
+  HANDLE_TH_ERRORS
+  THPUtils_assert(PyTuple_GET_SIZE(args) == 3, "tuple of 3 items expected");
+  PyObject *_device = PyTuple_GET_ITEM(args, 0);
+  PyObject *_handle = PyTuple_GET_ITEM(args, 1); /* shm_handle<MemBlock> */
+  PyObject *_size_bytes = PyTuple_GET_ITEM(args, 2);
+  if (!(THPUtils_checkLong(_device) && THPUtils_checkLong(_handle) &&
+        THPUtils_checkLong(_size_bytes))) {
+    THPUtils_invalidArguments(
+        args, nullptr, "_new_shared in CUDA mode", 1,
+        "(int device, int handle, int storage_size_bytes)");
+    return nullptr;
+  }
+  size_t storage_size =
+      (size_t)THPUtils_unpackLong(_size_bytes) / sizeof(uint8_t);
+  int64_t device = THPUtils_unpackLong(_device);
+  shm_handle<MemBlock> m_handle{PyLong_AsLong(_handle)};
+  at::cuda::CUDAGuard device_guard(device);
+
+  auto storage = GetTorchAllocator()->ReceiveHandle(m_handle, storage_size);
+  auto *torch_module = PyImport_ImportModule("torch");
+  auto *THPStorageClass =
+      PyObject_GetAttrString(torch_module, "UntypedStorage");
+  PyTypeObject *type = (PyTypeObject *)THPStorageClass;
+  PyObject *obj = type->tp_alloc(type, 0);
+  if (obj) {
+    ((THPStorage *)obj)->cdata = storage.release();
+  }
+  return obj;
+  END_HANDLE_TH_ERRORS
+}
+
+static PyObject *THPStorage_shareCuda(PyObject *_self, PyObject *noargs) {
+  HANDLE_TH_ERRORS
+  auto self = (THPStorage *)_self;
+  c10::StorageImpl *storage = self->cdata;
+
+  auto *allocator = dynamic_cast<TorchAllocator*>(storage->allocator());
+  THPUtils_assert(allocator != nullptr, "Allocator should not be nullptr."); 
+  THPUtils_assert(storage->data() != nullptr, "Storage should contains not-null data."); 
+
+  at::DeviceGuard device_guard(storage->device());
+  
+  auto _handle = allocator->SendHandle(storage);
+  THPObjectPtr tuple(PyTuple_New(3));
+  THPObjectPtr device(THPUtils_packInt32(storage->device().index()));
+  THPObjectPtr handle(THPUtils_packInt64(_handle));
+  THPObjectPtr size_bytes(THPUtils_packInt64(storage->nbytes()));
+
+  if (!tuple || !device || !handle) {
+    return nullptr;
+  }
+  PyTuple_SET_ITEM(tuple.get(), 0, device.release());
+  PyTuple_SET_ITEM(tuple.get(), 1, handle.release());
+  PyTuple_SET_ITEM(tuple.get(), 2, size_bytes.release());
+  return tuple.release();
+  END_HANDLE_TH_ERRORS
+}
+
+inline void RegisterCachingAllocator(py::module &m) {
   py::class_<CachingAllocatorConfig>(m, "C_CachingAllocatorConfig")
       .def(py::init<const std::string &, const std::string &, size_t, size_t,
-                    const std::string &, size_t, size_t>(), 
-          py::arg("log_prefix"), py::arg("shm_name"), py::arg("shm_nbytes"),
-          py::arg("va_range_scale"), 
-          py::arg("belong_name"), py::arg("small_block_nbytes"),
-          py::arg("align_nbytes"))
+                    const std::string &, size_t, size_t>(),
+           py::arg("log_prefix"), py::arg("shm_name"), py::arg("shm_nbytes"),
+           py::arg("va_range_scale"), py::arg("belong_name"),
+           py::arg("small_block_nbytes"), py::arg("align_nbytes"))
       .def_readwrite("log_prefix", &CachingAllocatorConfig::log_prefix)
       .def_readwrite("shm_name", &CachingAllocatorConfig::shm_name)
       .def_readwrite("shm_nbytes", &CachingAllocatorConfig::shm_nbytes)
@@ -78,9 +148,11 @@ void RegisterCachingAllocator(py::module &m) {
                      &CachingAllocatorConfig::small_block_nbytes)
       .def_readwrite("align_nbytes", &CachingAllocatorConfig::align_nbytes);
   py::class_<MemBlock>(m, "C_MemBlock")
-    .def_readonly("addr_offset", &MemBlock::addr_offset)
-    .def_readonly("nbytes", &MemBlock::nbytes)
-    .def_property_readonly("stream", [](const MemBlock *mem_block) { return reinterpret_cast<long>(mem_block->stream); });
+      .def_readonly("addr_offset", &MemBlock::addr_offset)
+      .def_readonly("nbytes", &MemBlock::nbytes)
+      .def_property_readonly("stream", [](const MemBlock *mem_block) {
+        return reinterpret_cast<long>(mem_block->stream);
+      });
   py::class_<CachingAllocator>(m, "C_CachingAllocator")
       .def(
           "Alloc",
@@ -92,12 +164,17 @@ void RegisterCachingAllocator(py::module &m) {
           },
           py::return_value_policy::reference)
       .def("Free", &CachingAllocator::Free)
-      .def_property_readonly("base_ptr", [](const CachingAllocator *caching_allocator) { return reinterpret_cast<long>(caching_allocator->GetBasePtr()); });
+      .def_property_readonly(
+          "base_ptr", [](const CachingAllocator *caching_allocator) {
+            return reinterpret_cast<long>(caching_allocator->GetBasePtr());
+          });
   m.def("override_pytorch_allocator", OverridePyTorchAllocator);
+  m.def("mpool_new_shared_cuda", THPStorage_newSharedCuda);
+  m.def("mpool_share_cuda", THPStorage_shareCuda);
 }
 static Instance ins;
-void RegisterInstance(py::module &m) {
-  
+inline void RegisterInstance(py::module &m) {
+
   m.def(
       "get_pages_pool",
       [](const std::string &name) {
@@ -166,16 +243,13 @@ void RegisterInstance(py::module &m) {
     const MemBlock *mem_block_;
 
   public:
-    RAIIMemBlock(CachingAllocator *allocator, const MemBlock *mem_block): allocator_(allocator), mem_block_(mem_block) {
-
-    }
-    ~RAIIMemBlock() {
-      allocator_->Free(mem_block_);
-    }
+    RAIIMemBlock(CachingAllocator *allocator, const MemBlock *mem_block)
+        : allocator_(allocator), mem_block_(mem_block) {}
+    ~RAIIMemBlock() { allocator_->Free(mem_block_); }
   };
   py::class_<RAIIMemBlock, std::shared_ptr<RAIIMemBlock>>(m, "C_RAIIMemBlock")
-    .def(py::init<CachingAllocator*, const MemBlock*>(), py::arg("allocator"), py::arg("mem_block"));
-  
+      .def(py::init<CachingAllocator *, const MemBlock *>(),
+           py::arg("allocator"), py::arg("mem_block"));
 }
 
 } // namespace mpool

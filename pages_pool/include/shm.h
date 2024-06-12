@@ -118,6 +118,10 @@ public:
     return reinterpret_cast<T *>(shm->get_address_from_handle(handle_));
   }
 
+  operator bip_shm::handle_t() const {
+    return handle_;
+  }
+
   bool operator==(const shm_handle<T>& rhs) const {
     return this->handle_ == rhs.handle_;
   }

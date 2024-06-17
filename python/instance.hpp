@@ -32,6 +32,7 @@
 #include <torch/csrc/utils/python_numbers.h>
 #include <type_traits>
 #include <unordered_map>
+#include "py_wrap.hpp"
 
 namespace py = pybind11;
 
@@ -51,7 +52,7 @@ public:
   }
 };
 
-void RegisterPagesPool(py::module &m) {
+inline void RegisterPagesPool(py::module &m) {
   py::class_<Belong>(m, "C_Belong");
   py::class_<bip::scoped_lock<bip::interprocess_mutex>>(m, "C_Lock");
   py::class_<PagesPoolConf>(m, "C_PagesPoolConf")
@@ -64,12 +65,34 @@ void RegisterPagesPool(py::module &m) {
       .def_readwrite("shm_name", &PagesPoolConf::shm_name)
       .def_readwrite("log_prefix", &PagesPoolConf::log_prefix)
       .def_readwrite("shm_nbytes", &PagesPoolConf::shm_nbytes);
-  py::class_<PagesPool>(m, "C_PagesPool")
-      .def("Lock", &PagesPool::Lock)
-      .def("GetBelong", &PagesPool::GetBelong)
-      .def("AllocConPages", &PagesPool::AllocConPages)
-      .def("AllocDisPages", &PagesPool::AllocDisPages)
-      .def("FreePages", &PagesPool::FreePages)
+  py::class_<PyPagePool>(m, "C_PagesPool")
+      .def(py::init([](PagesPoolConf conf) {
+        return PyPagePool{new SharableObject<PagesPool>{
+          conf.shm_name, conf.shm_nbytes, conf}};
+      }))
+      .def("lock", [](PyPagePool &page_pool) {
+             return page_pool->Lock();
+           })
+      .def("get_belong",
+           [](PyPagePool &page_pool, const std::string &name) {
+             return page_pool->GetBelong(name);
+           })
+      .def("alloc_con_pages",
+           [](PyPagePool &self, Belong blg, num_t num_req,
+              bip::scoped_lock<bip_mutex> &lock) {
+             return self->AllocConPages(blg, num_req, lock);
+           })
+      .def("alloc_dis_pages",
+           [](PyPagePool &self, Belong blg, num_t num_req,
+              bip::scoped_lock<bip_mutex> &lock) {
+             return self->AllocDisPages(blg, num_req, lock);
+           })
+      .def("free_pages",
+           [](PyPagePool &self,
+              const std::vector<index_t> &pages, Belong blg,
+              bip::scoped_lock<bip_mutex> &lock) {
+             self->FreePages(pages, blg, lock);
+           })
       .attr("INSUFFICIENT_PAGE") = PagesPool::INSUFFICIENT_PAGE;
 }
 
@@ -110,12 +133,13 @@ static PyObject *THPStorage_shareCuda(PyObject *_self, PyObject *noargs) {
   auto self = (THPStorage *)_self;
   c10::StorageImpl *storage = self->cdata;
 
-  auto *allocator = dynamic_cast<TorchAllocator*>(storage->allocator());
-  THPUtils_assert(allocator != nullptr, "Allocator should not be nullptr."); 
-  THPUtils_assert(storage->data() != nullptr, "Storage should contains not-null data."); 
+  auto *allocator = dynamic_cast<TorchAllocator *>(storage->allocator());
+  THPUtils_assert(allocator != nullptr, "Allocator should not be nullptr.");
+  THPUtils_assert(storage->data() != nullptr,
+                  "Storage should contains not-null data.");
 
   at::DeviceGuard device_guard(storage->device());
-  
+
   auto _handle = allocator->SendHandle(storage);
   THPObjectPtr tuple(PyTuple_New(3));
   THPObjectPtr device(THPUtils_packInt32(storage->device().index()));
@@ -153,19 +177,26 @@ inline void RegisterCachingAllocator(py::module &m) {
       .def_property_readonly("stream", [](const MemBlock *mem_block) {
         return reinterpret_cast<long>(mem_block->stream);
       });
-  py::class_<CachingAllocator>(m, "C_CachingAllocator")
+  py::class_<PyCachingAllocator>(m, "C_CachingAllocator")
+      .def(py::init([](PyPagePool pages_pool, CachingAllocatorConfig conf) {
+        auto &pages_pool_ref = *pages_pool.GetReference().GetObject();
+        auto *caching_allocator = new SharableObject<CachingAllocator>{conf.shm_name, conf.shm_nbytes, pages_pool_ref, conf};
+        return PyCachingAllocator{pages_pool, caching_allocator};
+      }))
       .def(
-          "Alloc",
-          [](CachingAllocator &allocator, size_t nbytes, long cuda_stream,
+          "alloc",
+          [](PyCachingAllocator &self, size_t nbytes, long cuda_stream,
              bool try_expand_VA) {
-            return allocator.Alloc(nbytes,
+            return self->Alloc(nbytes,
                                    reinterpret_cast<cudaStream_t>(cuda_stream),
                                    try_expand_VA);
           },
           py::return_value_policy::reference)
-      .def("Free", &CachingAllocator::Free)
+      .def("free", [](PyCachingAllocator &self, const MemBlock *block) {
+        return self->Free(block);
+      })
       .def_property_readonly(
-          "base_ptr", [](const CachingAllocator *caching_allocator) {
+          "base_ptr", [](PyCachingAllocator &caching_allocator) {
             return reinterpret_cast<long>(caching_allocator->GetBasePtr());
           });
   m.def("override_pytorch_allocator", OverridePyTorchAllocator);
@@ -174,81 +205,18 @@ inline void RegisterCachingAllocator(py::module &m) {
 }
 static Instance ins;
 inline void RegisterInstance(py::module &m) {
-
-  m.def(
-      "get_pages_pool",
-      [](const std::string &name) {
-        auto it = ins.pages_pool_instance.find(name);
-        if (it != ins.pages_pool_instance.end()) {
-          return it->second->GetObject();
-        }
-        return static_cast<PagesPool *>(nullptr);
-      },
-      py::return_value_policy::reference);
-  m.def(
-      "create_pages_pool",
-      [](const std::string &name, const PagesPoolConf &conf) {
-        auto it = ins.pages_pool_instance.find(name);
-        CHECK(it == ins.pages_pool_instance.cend());
-        auto *obj =
-            new SharableObject<PagesPool>{conf.shm_name, conf.shm_nbytes, conf};
-        ins.pages_pool_instance.insert(
-            {name, std::unique_ptr<SharableObject<PagesPool>>{obj}});
-        return obj->GetObject();
-      },
-      py::return_value_policy::reference);
-  m.def(
-      "delete_pages_pool",
-      [](const std::string &name) {
-        auto it = ins.pages_pool_instance.find(name);
-        CHECK(it != ins.pages_pool_instance.cend());
-        ins.pages_pool_instance.erase(it);
-      },
-      py::return_value_policy::reference);
-
-  m.def(
-      "get_caching_allocator",
-      [](const std::string &name) {
-        auto it = ins.caching_allocator_instance.find(name);
-        if (it != ins.caching_allocator_instance.end()) {
-          return it->second->GetObject();
-        }
-        return static_cast<CachingAllocator *>(nullptr);
-      },
-      py::return_value_policy::reference);
-  m.def(
-      "create_caching_allocator",
-      [](const std::string &name, PagesPool &page_pool,
-         const CachingAllocatorConfig &conf) {
-        auto it = ins.caching_allocator_instance.find(name);
-        CHECK(it == ins.caching_allocator_instance.cend());
-        auto *obj = new SharableObject<CachingAllocator>{
-            conf.shm_name, conf.shm_nbytes, page_pool, conf};
-        ins.caching_allocator_instance.insert(
-            {name, std::unique_ptr<SharableObject<CachingAllocator>>{obj}});
-        return obj->GetObject();
-      },
-      py::return_value_policy::reference);
-  m.def(
-      "delete_caching_allocator",
-      [](const std::string &name) {
-        auto it = ins.caching_allocator_instance.find(name);
-        CHECK(it != ins.caching_allocator_instance.cend());
-        ins.caching_allocator_instance.erase(it);
-      },
-      py::return_value_policy::reference);
   class RAIIMemBlock {
   private:
-    CachingAllocator *allocator_;
+    PyCachingAllocator &allocator_;
     const MemBlock *mem_block_;
 
   public:
-    RAIIMemBlock(CachingAllocator *allocator, const MemBlock *mem_block)
+    RAIIMemBlock(PyCachingAllocator &allocator, const MemBlock *mem_block)
         : allocator_(allocator), mem_block_(mem_block) {}
     ~RAIIMemBlock() { allocator_->Free(mem_block_); }
   };
   py::class_<RAIIMemBlock, std::shared_ptr<RAIIMemBlock>>(m, "C_RAIIMemBlock")
-      .def(py::init<CachingAllocator *, const MemBlock *>(),
+      .def(py::init<PyCachingAllocator&, const MemBlock *>(),
            py::arg("allocator"), py::arg("mem_block"));
 }
 

@@ -26,6 +26,7 @@ class MPoolAllocator(HostOnlyCUDAMemoryManager):
         stream = numba.cuda.default_stream()
         mem = self._caching_allocator.Alloc(size, stream, True)
         addr = self._caching_allocator.base_ptr + mem.addr_offset
+        numba.cuda.IpcHandle()
 
         if config.CUDA_USE_NVIDIA_BINDING:
             ptr = CUdeviceptr(addr)

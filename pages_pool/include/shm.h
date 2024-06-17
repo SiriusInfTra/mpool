@@ -9,6 +9,7 @@
 #include <boost/unordered/unordered_map_fwd.hpp>
 #include <functional>
 #include <glog/logging.h>
+#include <memory>
 
 namespace mpool {
 
@@ -71,7 +72,7 @@ public:
 };
 
 template <typename T> class 
-SharableObject {
+SharableObject: public std::enable_shared_from_this<SharableObject<T>> {
 private:
   SharedMemory shared_memory_;
   T *object_;
@@ -88,6 +89,8 @@ public:
     });
   }
 
+  const T *operator->() const { return object_; }
+
   T *operator->() { return object_; }
 
   T *GetObject() { return object_; }
@@ -99,6 +102,12 @@ public:
         [&](bool last_deinit) { delete object_; object_ = nullptr; });
   }
 };
+
+template <typename T> class 
+SharableObjectPtr: std::shared_ptr<SharableObject<T>> {
+private:
+};
+
 
 template <typename T> class shm_handle {
 private:

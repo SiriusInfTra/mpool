@@ -12,11 +12,13 @@
 #include <c10/cuda/CUDAStream.h>
 #include <unordered_map>
 
+#include "py_wrap.hpp"
+
 namespace mpool {
 
 class TorchAllocator : public c10::cuda::CUDACachingAllocator::CUDAAllocator {
 public:
-  CachingAllocator &_caching_allocator;
+  PyCachingAllocator _caching_allocator;
 
 private:
   std::unordered_map<std::byte *, MemBlock *> _mem_blocks;
@@ -24,8 +26,8 @@ private:
   bool initialized_ = false;
 
 public:
-  TorchAllocator(CachingAllocator &caching_allocator)
-      : _caching_allocator(caching_allocator) {}
+  TorchAllocator(PyCachingAllocator caching_allocator)
+      : _caching_allocator(std::move(caching_allocator)) {}
 
   c10::DataPtr allocate(size_t nbytes) const override;
   c10::DeleterFnPtr raw_deleter() const override;
@@ -71,7 +73,7 @@ public:
   shm_handle<MemBlock> SendHandle(c10::StorageImpl *storage);
 };
 
-void OverridePyTorchAllocator(CachingAllocator *caching_allocator);
+void OverridePyTorchAllocator(PyCachingAllocator caching_allocator);
 
 TorchAllocator *GetTorchAllocator();
 } // namespace mpool

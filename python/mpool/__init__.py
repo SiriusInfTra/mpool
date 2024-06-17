@@ -4,8 +4,8 @@ from threading import local
 import contextvars
 import torch
 from ._C import *
-import cupy_integrate
-import numba_integrate
+from . import cupy_integrate
+from . import numba_integrate
 
 import dataclasses
 
@@ -27,7 +27,12 @@ class PagesPoolLock:
     
     def __exit__(self, exc_type, exc_value, traceback) -> None:
         del self._lock
-  
+
+
+def override_ipc(caching_alloactor: C_CachingAllocator):
+    import torch
+    torch.StorageBase._share_cuda_ = mpool_share_cuda
+    torch.StorageBase._new_shared_cuda = mpool_new_shared_cuda
 class PagesPool:
     def __init__(self, conf: PagesPoolConf):
         self._conf = C_PagesPoolConf(conf.page_nbytes, conf.pool_nbytes, conf.shm_name, conf.log_prefix, conf.shm_nbytes)

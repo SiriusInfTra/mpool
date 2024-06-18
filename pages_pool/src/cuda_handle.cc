@@ -1,3 +1,4 @@
+#include "pages.h"
 #include <cuda_handle.h>
 
 namespace mpool {
@@ -123,6 +124,12 @@ CUDAIpcTransfer::CUDAIpcTransfer(SharedMemory &shared_memory,
       shared_memory->find_or_construct<shm_handle<BelongImpl>>("HT_belong_list")[pages_num_]();
   phy_pages_ref_.reserve(pages_num_);
 }
+
+CUDAIpcTransfer::~CUDAIpcTransfer() {
+  message_queue_.Close();
+  export_handle_thread_.join();
+}
+
 void CUDAIpcTransfer::InitMaster(Belong kFree) {
   message_queue_.RecordEvent(Event::kMasterChance);
   for (size_t k = 0; k < pages_num_; ++k) {
@@ -140,14 +147,17 @@ void CUDAIpcTransfer::InitMaster(Belong kFree) {
         PhyPage{index, cu_handle, &shm_belong_list_[index]});
   }
   auto end = std::chrono::steady_clock::now();
-  LOG(INFO) << "[mempool] Alloc " << pages_num_ << " x "
+  LOG_IF(INFO, VERBOSE_LEVEL >= 1) << log_prefix_ << "[CUDAIpcTransfer] Alloc " << pages_num_ << " x "
             << ByteDisplay(page_nbytes_) << " block(s) costs "
             << std::chrono::duration_cast<std::chrono::milliseconds>(end -
                                                                      start)
                    .count()
             << " ms.";
   export_handle_thread_ = std::thread{[&] { Run(); }};
+  while (!cuda_ipc_work_ready) {}
+  LOG_IF(INFO, VERBOSE_LEVEL >= 1) << log_prefix_ << "[CUDAIpcTransfer] Init master ok!";
 }
+
 void CUDAIpcTransfer::InitMirror() {
   message_queue_.WaitEvent(Event::kServerReady);
   int socket_fd;
@@ -158,7 +168,7 @@ void CUDAIpcTransfer::InitMirror() {
     size_t chunk_size =
         std::min(pages_num_ - chunk_begin, TRANSFER_CHUNK_SIZE);
     std::vector<int> fd_list(chunk_size);
-    LOG(INFO) << "[mempool] Mirror is receving handles: " << chunk_begin << "/"
+    LOG_IF(INFO, VERBOSE_LEVEL >= 2) << log_prefix_ << "[CUDAIpcTransfer] Mirror is receving handles: " << chunk_begin << "/"
           << pages_num_ << ".";
     message_queue_.WaitEvent(Event::kClientReceived);
     Receive(fd_list.data(), fd_list.size(), socket_fd);
@@ -177,20 +187,23 @@ void CUDAIpcTransfer::InitMirror() {
   UnlinkClient(socket_fd);
   message_queue_.RecordEvent(Event::kClientExit);
   export_handle_thread_ = std::thread{[&] { Run(); }};
+  while (!cuda_ipc_work_ready) {}
+  LOG_IF(INFO, VERBOSE_LEVEL >= 1) << log_prefix_ << "[CUDAIpcTransfer] Init mirror ok!";
 }
+
 void CUDAIpcTransfer::Run() {
   if (message_queue_.WaitEvent(Event::kMasterChance, true) ==
       false) {
     return;
   }
-  LOG(INFO) << "[mempool] RUN!";
+  LOG_IF(INFO, VERBOSE_LEVEL >= 1) << log_prefix_ << "[CUDAIpcTransfer] Worker become master!";
   int socket_fd;
   BindServer(socket_fd);
   while (true) {
     message_queue_.RecordEvent(Event::kServerReady);
     if (message_queue_.WaitEvent(Event::kClientBound, true) ==
         false) {
-      LOG(INFO) << "[mempool] Exit due to closed.";
+      LOG_IF(INFO, VERBOSE_LEVEL >= 2) << log_prefix_ << "[CUDAIpcTransfer] Worker exit due to close.";
       break;
     }
     for (size_t chunk_begin = 0; chunk_begin < pages_num_;
@@ -203,7 +216,7 @@ void CUDAIpcTransfer::Run() {
             &fd_list[k], phy_pages_ref_[chunk_begin + k].cu_handle,
             CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR, 0));
       }
-      LOG(INFO) << "[mempool] Master is sending handles: " << chunk_begin << "/"
+      LOG_IF(INFO, VERBOSE_LEVEL >= 2) << log_prefix_ << "[CUDAIpcTransfer] Master is sending handles: " << chunk_begin << "/"
                 << pages_num_ << ".";
 
       Send(fd_list.data(), fd_list.size(), socket_fd);
@@ -219,7 +232,7 @@ void CUDAIpcTransfer::Run() {
   message_queue_.RecordEvent(Event::kMasterChance);
   LOG(INFO) << "[mempool] EXIT!";
 }
-void CUDAIpcTransfer::Stop() { message_queue_.Close(); }
+
 MessageQueue::MessageQueue(SharedMemory &shared_memory) : is_close(false) {
   mutex = shared_memory->find_or_construct<bip_mutex>("MQ_mutex")();
   cond = shared_memory->find_or_construct<bip_cond>("MQ_cond")();
@@ -256,4 +269,5 @@ void MessageQueue::Close() {
   is_close = true;
   cond->notify_all();
 }
+
 } // namespace mpool

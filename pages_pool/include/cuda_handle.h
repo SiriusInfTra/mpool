@@ -84,24 +84,25 @@ private:
   // include/net/scm.h SCM_MAX_FD 253
   static const constexpr size_t TRANSFER_CHUNK_SIZE = 128;
 
+  std::atomic<bool> cuda_ipc_work_ready = true;
+
   std::string server_sock_name_;
   std::string client_sock_name_;
   MessageQueue message_queue_;
   std::vector<PhyPage> &phy_pages_ref_;
   shm_handle<BelongImpl> *shm_belong_list_;
   std::thread export_handle_thread_;
+
   const size_t pages_num_;
   const size_t page_nbytes_;
+  const std::string log_prefix_;
 
 public:
   CUDAIpcTransfer(SharedMemory &shared_memory,
                     std::vector<PhyPage> &phy_pages_ref,
                     const PagesPoolConf &conf);
 
-  ~CUDAIpcTransfer() {
-    message_queue_.Close();
-    export_handle_thread_.join();
-  }
+  ~CUDAIpcTransfer();
 
   void InitMaster(Belong kFree);
 
@@ -120,7 +121,5 @@ public:
   void UnlinkClient(int socket_fd);
 
   void Run();
-
-  void Stop();
 };
 } // namespace mpool

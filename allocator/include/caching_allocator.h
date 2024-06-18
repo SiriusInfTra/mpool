@@ -1,8 +1,6 @@
 #pragma once
 #include <cstddef>
-#include <iterator>
 #include <string>
-#include <iterator>
 
 #include <stream_context.h>
 #include <mapping_region.h>
@@ -15,10 +13,7 @@
 
 #include <cuda_runtime_api.h>
 
-
 namespace mpool {
-
-
 
 struct CachingAllocatorConfig {
   std::string log_prefix;
@@ -70,7 +65,6 @@ public:
   }
 
   ~CachingAllocator();
-
 
   MemBlock *Alloc(size_t nbytes, cudaStream_t cuda_stream,
                   bool try_expand_VA = true);

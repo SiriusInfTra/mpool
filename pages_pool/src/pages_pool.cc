@@ -36,7 +36,7 @@ PagesPool::PagesPool(SharedMemory &shared_memory, PagesPoolConf conf, bool first
     }
 
     free_list_.Init(config.pool_nbytes / config.page_nbytes);
-    LOG(INFO) << config.log_prefix;
+    LOG(INFO) << config.log_prefix << "Pages Pool OK.";
 }
 index_t PagesPool::AllocConPages(Belong blg, num_t num_req, bip::scoped_lock<bip_mutex> &lock) {
     LOG_IF(INFO, VERBOSE_LEVEL >= 3) << "AllocConPages: blg=" << blg << ", num_req=" << num_req << "."; 
@@ -94,6 +94,7 @@ void PagesPool::FreePages(const std::vector<index_t> &pages, Belong blg, bip::sc
 //     blg.impl_->pages_num.fetch_sub(pages_len, std::memory_order_relaxed);
 // }
 PagesPool::~PagesPool() {
+    LOG(INFO) << "Release PagesPool";
     // if (shared_memory_.IsMaster()) {
     //     auto getRefCount = [&] {
     //       bip::scoped_lock locker(*mutex_);

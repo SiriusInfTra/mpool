@@ -1,17 +1,15 @@
-#include "mem_block.h"
+#include <mem_block.h>
+#include <pages.h>
 #include <caching_allocator.h>
 #include <shm.h>
 #include <util.h>
 
-#include <algorithm>
-#include <unordered_set>
 
 #include <boost/unordered_map.hpp>
 
 #include <glog/logging.h>
 
 namespace mpool {
-
 
 CachingAllocator::CachingAllocator(SharedMemory &shared_memory,
                                    PagesPool &page_pool,
@@ -33,36 +31,52 @@ CachingAllocator::CachingAllocator(SharedMemory &shared_memory,
       stream_context_map_(
           *shared_memory_->find_or_construct<
               bip_unordered_map<cudaStream_t, shm_handle<StreamContext>>>(
-              "CA_stream_context_map")(
-              shared_memory_->get_segment_manager())){};
+              "CA_stream_context_map")(shared_memory_->get_segment_manager())) {
+  LOG_IF(INFO, VERBOSE_LEVEL >= 1)
+      << this->config.log_prefix << "Init CachingAllocator";
+};
 
-CachingAllocator::~CachingAllocator() {}
+CachingAllocator::~CachingAllocator() {
+  LOG_IF(INFO, VERBOSE_LEVEL >= 1)
+      << config.log_prefix << "Release CachingAllocator";
+}
 
 MemBlock *CachingAllocator::Alloc(size_t nbytes, cudaStream_t cuda_stream,
                                   bool try_expand_VA) {
+  LOG_IF(INFO, VERBOSE_LEVEL >= 1)
+      << "Alloc " << ByteDisplay(nbytes) << ", stream = " << cuda_stream
+      << ", try_expand_VA = " << try_expand_VA << ".";
   bip::scoped_lock lock{shared_memory_.GetMutex()};
   nbytes = (nbytes + config.align_nbytes - 1) & ~(config.align_nbytes - 1);
-  auto &stream_context = GetStreamContext(cuda_stream);
-  auto *block = AllocWithContext(nbytes, stream_context);
+  auto &stream_context = GetStreamContext(cuda_stream, lock);
+  auto *block = AllocWithContext(nbytes, stream_context, lock);
+  // LOG(INFO) << "a";
   if (block == nullptr) {
-    block = AllocWithContext(nbytes, global_stream_context_);
+    block = AllocWithContext(nbytes, global_stream_context_, lock);
   }
+  // LOG(INFO) << "b";
   if (block == nullptr && try_expand_VA) {
-    CHECK(CHECK_LEVEL < 3 || CheckState());
+    CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
     block = stream_context.stream_block_list.CreateEntryExpandVA(nbytes);
+    // LOG(INFO) << "c";
     LOG_IF(INFO, VERBOSE_LEVEL >= 3) << block;
-    CHECK(CHECK_LEVEL < 3 || CheckState());
+    CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
     stream_context.stream_free_list.PushBlock(block);
-    CHECK(CHECK_LEVEL < 3 || CheckState());
-    block = AllocWithContext(nbytes, stream_context);
+    // LOG(INFO) << "d";
+    CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
+    block = AllocWithContext(nbytes, stream_context, lock);
+    // LOG(INFO) << "d";
     // LOG(INFO) << block;
   }
-  CHECK(CHECK_LEVEL < 2 || CheckState());
+  CHECK(CHECK_LEVEL < 2 || CheckStateInternal(lock));
   if (block != nullptr) {
     mapping_region_.EnsureMemBlockWithMappings(block, all_block_list_);
+    block->ref_count += 1;
+    // LOG(INFO) << "e";
   }
-  CHECK(CHECK_LEVEL < 1 || CheckState());
-  block->ref_count += 1;
+  CHECK(CHECK_LEVEL < 1 || CheckStateInternal(lock));
+  // LOG(INFO) << "f";
+
   return block;
 }
 
@@ -74,14 +88,14 @@ void CachingAllocator::Free(const MemBlock *block0) {
   if (--block->ref_count > 0) {
     return;
   }
-  auto &context = GetStreamContext(block->stream);
+  auto &context = GetStreamContext(block->stream, lock);
   CHECK(!block->is_free) << block;
-  CHECK(CHECK_LEVEL < 3 || CheckState());
+  CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
   if (block->is_small) {
     block = context.stream_free_list.PushBlock(block);
-    CHECK(CHECK_LEVEL < 3 || CheckState());
+    CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
     block = context.stream_free_list.MaybeMergeAdj(block);
-    CHECK(CHECK_LEVEL < 3 || CheckState());
+    CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
   } else {
     block = context.stream_free_list.PushBlock(block);
     if (auto *prev_entry = context.stream_block_list.GetPrevEntry(block);
@@ -90,7 +104,7 @@ void CachingAllocator::Free(const MemBlock *block0) {
       size_t prev_entry_nbytes = prev_entry->nbytes;
       auto *maybe_merged_entry =
           context.stream_free_list.MaybeMergeAdj(prev_entry);
-      CHECK(CHECK_LEVEL < 3 || CheckState());
+      CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
       if (maybe_merged_entry->nbytes > prev_entry_nbytes) {
         block = maybe_merged_entry;
       }
@@ -101,13 +115,13 @@ void CachingAllocator::Free(const MemBlock *block0) {
       size_t next_entry_nbytes = next_entry->nbytes;
       auto *maybe_merged_entry =
           context.stream_free_list.MaybeMergeAdj(next_entry);
-      CHECK(CHECK_LEVEL < 3 || CheckState());
+      CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
       if (maybe_merged_entry->nbytes > next_entry_nbytes) {
         block = maybe_merged_entry;
       }
     }
   }
-  CHECK(CHECK_LEVEL < 1 || CheckState());
+  CHECK(CHECK_LEVEL < 1 || CheckStateInternal(lock));
 }
 void CachingAllocator::EmptyCache() {
   LOG_IF(INFO, VERBOSE_LEVEL)
@@ -120,10 +134,12 @@ void CachingAllocator::EmptyCache() {
     auto stream_context = handle.ptr(shared_memory_);
     stream_context->MoveFreeBlockTo(global_stream_context_);
   }
-  CHECK(CHECK_LEVEL < 1 || CheckState());
+  CHECK(CHECK_LEVEL < 1 || CheckStateInternal(lock));
 };
 
-StreamContext &CachingAllocator::GetStreamContext(cudaStream_t cuda_stream) {
+StreamContext &
+CachingAllocator::GetStreamContext(cudaStream_t cuda_stream,
+                                   const bip::scoped_lock<bip_mutex> &lock) {
   auto iter = stream_context_map_.find(cuda_stream);
   if (iter == stream_context_map_.end()) {
     LOG(INFO) << "Init Stream context";
@@ -143,13 +159,14 @@ StreamContext &CachingAllocator::GetStreamContext(cudaStream_t cuda_stream) {
   return *iter->second.ptr(shared_memory_);
 }
 
-MemBlock *CachingAllocator::AllocWithContext(size_t nbytes,
-                                             StreamContext &stream_context) {
+MemBlock *
+CachingAllocator::AllocWithContext(size_t nbytes, StreamContext &stream_context,
+                                   const bip::scoped_lock<bip_mutex> &lock) {
   bool is_small = nbytes <= config.small_block_nbytes;
-  CHECK(CHECK_LEVEL < 2 || CheckState());
+  CHECK(CHECK_LEVEL < 2 || CheckStateInternal(lock));
   auto *free_block =
       stream_context.stream_free_list.PopBlock(is_small, nbytes, 50);
-  CHECK(CHECK_LEVEL < 2 || CheckState());
+  CHECK(CHECK_LEVEL < 2 || CheckStateInternal(lock));
   // LOG(INFO) << free_block << " is small " << is_small;
   if (free_block == nullptr && is_small) {
     free_block = stream_context.stream_free_list.PopBlock(
@@ -160,10 +177,11 @@ MemBlock *CachingAllocator::AllocWithContext(size_t nbytes,
       free_block = stream_context.stream_free_list.PopBlock(true, nbytes, 0);
     }
   }
-  CHECK(CHECK_LEVEL < 2 || CheckState());
+  CHECK(CHECK_LEVEL < 2 || CheckStateInternal(lock));
   return free_block;
 }
-bool CachingAllocator::CheckState() {
+bool CachingAllocator::CheckStateInternal(
+    const bip::scoped_lock<bip_mutex> &lock) {
   bool ret = true;
   ret &= global_stream_context_.stream_block_list.CheckState(true);
   ret &= global_stream_context_.stream_free_list.CheckState();
@@ -172,5 +190,21 @@ bool CachingAllocator::CheckState() {
     ret &= context.ptr(shared_memory_)->stream_free_list.CheckState();
   }
   return ret;
+}
+
+MemBlock *CachingAllocator::ReceiveMemBlock(shm_handle<MemBlock> handle) {
+  LOG_IF(INFO, VERBOSE_LEVEL >= 0) << "Receive MemBlock: " << handle << ".";
+  bip::scoped_lock lock{shared_memory_.GetMutex()};
+  auto *mem_block = handle.ptr(shared_memory_);
+  CHECK_GE(mem_block->addr_offset, 0) << "Invalid handle";
+  return mem_block;
+}
+shm_handle<MemBlock> CachingAllocator::SendMemBlock(MemBlock *mem_block) {
+  shm_handle<MemBlock> handle{mem_block, shared_memory_};
+  LOG_IF(INFO, VERBOSE_LEVEL >= 0)
+      << "Send MemBlock: " << mem_block << " -> " << handle << ".";
+  bip::scoped_lock lock{shared_memory_.GetMutex()};
+  mem_block->ref_count++;
+  return handle;
 }
 } // namespace mpool

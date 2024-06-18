@@ -41,7 +41,6 @@ public:
     return bip::shared_memory_object::remove(config.shm_name.c_str());
   }
 
-
 private:
   PagesPool &page_pool_;
   SharedMemory &shared_memory_;
@@ -53,8 +52,11 @@ private:
   bip_unordered_map<cudaStream_t, shm_handle<StreamContext>>
       &stream_context_map_;
 
-  StreamContext &GetStreamContext(cudaStream_t cuda_stream);
+  StreamContext &GetStreamContext(cudaStream_t cuda_stream, const bip::scoped_lock<bip_mutex> &lock);
 
+  MemBlock *AllocWithContext(size_t nbytes, StreamContext &stream_context, const bip::scoped_lock<bip_mutex> &lock);
+
+  bool CheckStateInternal(const bip::scoped_lock<bip_mutex> &lock);
 public:
   CachingAllocator(SharedMemory &shared_memory, PagesPool &page_pool,
                    CachingAllocatorConfig config, bool first_init);
@@ -63,33 +65,25 @@ public:
 
   std::byte *GetEndPtr() const { return mapping_region_.GetEndPtr(); }
 
-  bool IsAllocatedPtr(std::byte *ptr) {
+  bool IsAllocatedPtr(std::byte *ptr) const {
     return ptr >= mapping_region_.GetBasePtr() && ptr < mapping_region_.GetEndPtr();
   }
 
   ~CachingAllocator();
 
-  MemBlock *AllocWithContext(size_t nbytes, StreamContext &stream_context);
 
   MemBlock *Alloc(size_t nbytes, cudaStream_t cuda_stream,
                   bool try_expand_VA = true);
-  
-  MemBlock *ReceiveMemBlock(shm_handle<MemBlock> handle) {
-    auto *mem_block = handle.ptr(shared_memory_);
-    CHECK_GE(mem_block->addr_offset, 0) << "Invalid handle";
-    mem_block->ref_count++;
-    return mem_block;
-  }
 
-  shm_handle<MemBlock> SendMemBlock(MemBlock *mem_block) {
-    return {mem_block, shared_memory_};
-  }
+  MemBlock *ReceiveMemBlock(shm_handle<MemBlock> handle);
+
+  shm_handle<MemBlock> SendMemBlock(MemBlock *mem_block);
 
   void Free(const MemBlock *block);
 
   void EmptyCache();
 
-  bool CheckState();
+
 };
 
 

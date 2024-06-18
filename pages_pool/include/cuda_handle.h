@@ -7,6 +7,7 @@
 #include <boost/interprocess/sync/interprocess_condition.hpp>
 #include <boost/interprocess/sync/interprocess_mutex.hpp>
 #include <boost/interprocess/sync/scoped_lock.hpp>
+#include <ostream>
 #include <pages.h>
 #include <shm.h>
 
@@ -14,8 +15,6 @@
 #include <sys/un.h>
 
 namespace mpool {
-class MessageQueue {
-public:
   enum class Event {
     kMasterChance,
     kClientRequested,
@@ -25,6 +24,43 @@ public:
     kServerReady,
   };
 
+inline std::ostream &operator<<(std::ostream &out, const Event &event) {
+  switch (event) {
+  case Event::kMasterChance:
+    out << "kMasterChance";
+    break;
+  case Event::kClientRequested:
+    out << "kClientRequested";
+    break;
+  case Event::kClientBound:
+    out << "kClientBound";
+    break;
+  case Event::kClientReceived:
+    out << "kClientReceived";
+    break;
+  case Event::kClientExit:
+    out << "kClientExit";
+    break;
+  case Event::kServerReady:
+    out << "kServerReady";
+    break;
+  }
+  return out;
+}
+
+inline std::ostream &operator<<(std::ostream &out, const bip_list<Event> &events) {
+  bool first = true;
+  for (auto &&event : events) {
+    out << event;
+    if (first) {
+      first = false;
+    } else {
+      out << " ";
+    }
+  }
+  return out;
+}
+class MessageQueue {
 private:
   bip_mutex *mutex;
   bip_cond *cond;

@@ -61,7 +61,7 @@ public:
     deinit_func(last_deinit);
     if (last_deinit) {
       lock.unlock();
-      bip::shared_memory_object::remove(name.c_str());
+      // bip::shared_memory_object::remove(name.c_str());
     }
     is_deinit_ = true;
   }
@@ -102,12 +102,6 @@ public:
         [&](bool last_deinit) { delete object_; object_ = nullptr; });
   }
 };
-
-template <typename T> class 
-SharableObjectPtr: std::shared_ptr<SharableObject<T>> {
-private:
-};
-
 
 template <typename T> class shm_handle {
 private:

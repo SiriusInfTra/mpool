@@ -124,7 +124,7 @@ CUDAIpcTransfer::CUDAIpcTransfer(SharedMemory &shared_memory,
   phy_pages_ref_.reserve(pages_num_);
 }
 void CUDAIpcTransfer::InitMaster(Belong kFree) {
-  message_queue_.RecordEvent(MessageQueue::Event::kMasterChance);
+  message_queue_.RecordEvent(Event::kMasterChance);
   for (size_t k = 0; k < pages_num_; ++k) {
     shm_belong_list_[k] = kFree;
   }
@@ -149,10 +149,10 @@ void CUDAIpcTransfer::InitMaster(Belong kFree) {
   export_handle_thread_ = std::thread{[&] { Run(); }};
 }
 void CUDAIpcTransfer::InitMirror() {
-  message_queue_.WaitEvent(MessageQueue::Event::kServerReady);
+  message_queue_.WaitEvent(Event::kServerReady);
   int socket_fd;
   BindClient(socket_fd);
-  message_queue_.RecordEvent(MessageQueue::Event::kClientBound);
+  message_queue_.RecordEvent(Event::kClientBound);
   for (size_t chunk_begin = 0; chunk_begin < pages_num_;
        chunk_begin += TRANSFER_CHUNK_SIZE) {
     size_t chunk_size =
@@ -160,7 +160,7 @@ void CUDAIpcTransfer::InitMirror() {
     std::vector<int> fd_list(chunk_size);
     LOG(INFO) << "[mempool] Mirror is receving handles: " << chunk_begin << "/"
           << pages_num_ << ".";
-    message_queue_.WaitEvent(MessageQueue::Event::kClientReceived);
+    message_queue_.WaitEvent(Event::kClientReceived);
     Receive(fd_list.data(), fd_list.size(), socket_fd);
     for (size_t k = 0; k < chunk_size; ++k) {
       CUmemGenericAllocationHandle cu_handle;
@@ -175,11 +175,11 @@ void CUDAIpcTransfer::InitMirror() {
 
   }
   UnlinkClient(socket_fd);
-  message_queue_.RecordEvent(MessageQueue::Event::kClientExit);
+  message_queue_.RecordEvent(Event::kClientExit);
   export_handle_thread_ = std::thread{[&] { Run(); }};
 }
 void CUDAIpcTransfer::Run() {
-  if (message_queue_.WaitEvent(MessageQueue::Event::kMasterChance, true) ==
+  if (message_queue_.WaitEvent(Event::kMasterChance, true) ==
       false) {
     return;
   }
@@ -187,9 +187,10 @@ void CUDAIpcTransfer::Run() {
   int socket_fd;
   BindServer(socket_fd);
   while (true) {
-    message_queue_.RecordEvent(MessageQueue::Event::kServerReady);
-    if (message_queue_.WaitEvent(MessageQueue::Event::kClientBound, true) ==
+    message_queue_.RecordEvent(Event::kServerReady);
+    if (message_queue_.WaitEvent(Event::kClientBound, true) ==
         false) {
+      LOG(INFO) << "[mempool] Exit due to closed.";
       break;
     }
     for (size_t chunk_begin = 0; chunk_begin < pages_num_;
@@ -206,16 +207,17 @@ void CUDAIpcTransfer::Run() {
                 << pages_num_ << ".";
 
       Send(fd_list.data(), fd_list.size(), socket_fd);
-      message_queue_.RecordEvent(MessageQueue::Event::kClientReceived);
+      message_queue_.RecordEvent(Event::kClientReceived);
       for (size_t k = 0; k < chunk_size; ++k) {
         close(fd_list[k]);
       }
-      // message_queue_.WaitEvent(MessageQueue::Event::kClientReceived);
+      // message_queue_.WaitEvent(Event::kClientReceived);
     }
-    message_queue_.WaitEvent(MessageQueue::Event::kClientExit);
+    message_queue_.WaitEvent(Event::kClientExit);
   }
   UnlinkServer(socket_fd);
-  message_queue_.RecordEvent(MessageQueue::Event::kMasterChance);
+  message_queue_.RecordEvent(Event::kMasterChance);
+  LOG(INFO) << "[mempool] EXIT!";
 }
 void CUDAIpcTransfer::Stop() { message_queue_.Close(); }
 MessageQueue::MessageQueue(SharedMemory &shared_memory) : is_close(false) {
@@ -226,21 +228,29 @@ MessageQueue::MessageQueue(SharedMemory &shared_memory) : is_close(false) {
 }
 bool MessageQueue::WaitEvent(Event event, bool interruptable) {
   bip::scoped_lock lock{*mutex};
+  LOG(INFO) << "WaitEvent " << event << ".";
+  LOG(INFO) << "CURRENT LIST: " << *message_queue_; 
   cond->wait(lock, [&] {
     return (interruptable && is_close) ||
            (!message_queue_->empty() && message_queue_->front() == event);
   });
-  if (interruptable && is_close) {
-    return false;
-  }
-  message_queue_->pop_front();
-  cond->notify_all();
-  return true;
+  LOG(INFO) << "WaitEvent OK " << event << "." ;
+  if (message_queue_->front() == event) {
+    message_queue_->pop_front();
+    cond->notify_all();
+    LOG(INFO) << "CURRENT LIST: " << *message_queue_;
+    return true;
+  } 
+  LOG(INFO) << "CURRENT LIST: " << *message_queue_;
+  return false;
+
 }
 void MessageQueue::RecordEvent(Event event) {
   bip::scoped_lock lock{*mutex};
+  LOG(INFO) << "RecordEvent " << event << "."; 
   message_queue_->push_back(event);
   cond->notify_all();
+  LOG(INFO) << "CURRENT LIST: " << *message_queue_;
 }
 void MessageQueue::Close() {
   is_close = true;

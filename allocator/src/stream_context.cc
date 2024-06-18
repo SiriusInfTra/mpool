@@ -53,7 +53,7 @@ MemBlock *StreamBlockList::GetNextEntry(MemBlock *entry) {
 
 MemBlock *StreamBlockList::SplitBlock(MemBlock *origin_entry, size_t remain) {
   CHECK_GT(origin_entry->nbytes, remain);
-  CHECK_EQ(origin_entry->ref_count, 0);
+  CHECK_EQ(origin_entry->ref_count, 0) << origin_entry;
   /* [origin: remain] [insert_after_entry: nbytes - remain] */
   auto *insert_after_entry = new (shared_memory_->allocate(sizeof(MemBlock)))
       MemBlock{.addr_offset =

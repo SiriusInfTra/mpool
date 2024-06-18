@@ -24,3 +24,5 @@ target_link_libraries(mpool PRIVATE pages_pool)
 # set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH}:$ENV{HOME}/miniforge3/envs/dev2/lib/python3.10/site-packages/cython_cmake/cmake)
 include(cmake/glog.cmake)
 
+
+target_compile_options(mpool PUBLIC -g -O0)

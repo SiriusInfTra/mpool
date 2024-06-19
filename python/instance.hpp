@@ -1,5 +1,6 @@
 #include <Python.h>
 #include <c10/cuda/CUDAGuard.h>
+#include <c10/util/Exception.h>
 #include <import.h>
 #include <longobject.h>
 #include <object.h>
@@ -38,20 +39,6 @@ namespace py = pybind11;
 
 namespace mpool {
 
-class Instance {
-public:
-  std::unordered_map<std::string, std::unique_ptr<SharableObject<PagesPool>>>
-      pages_pool_instance;
-  std::unordered_map<std::string,
-                     std::unique_ptr<SharableObject<CachingAllocator>>>
-      caching_allocator_instance;
-
-  ~Instance() {
-    caching_allocator_instance.clear();
-    pages_pool_instance.clear();
-  }
-};
-
 inline void RegisterPagesPool(py::module &m) {
   py::class_<Belong>(m, "C_Belong");
   py::class_<bip::scoped_lock<bip::interprocess_mutex>>(m, "C_Lock");
@@ -69,7 +56,7 @@ inline void RegisterPagesPool(py::module &m) {
       .def(py::init([](PagesPoolConf conf) {
         return PyPagePool{new SharableObject<PagesPool>{
           conf.shm_name, conf.shm_nbytes, conf}};
-      }))
+      }), py::return_value_policy::move)
       .def("lock", [](PyPagePool &page_pool) {
              return page_pool->Lock();
            })
@@ -96,64 +83,55 @@ inline void RegisterPagesPool(py::module &m) {
       .attr("INSUFFICIENT_PAGE") = PagesPool::INSUFFICIENT_PAGE;
 }
 
-static PyObject *THPStorage_newSharedCuda(PyObject *_unused, PyObject *args) {
+static py::object THPStorage_newSharedCuda(py::object _unused, py::args args) {
   HANDLE_TH_ERRORS
-  THPUtils_assert(PyTuple_GET_SIZE(args) == 3, "tuple of 3 items expected");
-  PyObject *_device = PyTuple_GET_ITEM(args, 0);
-  PyObject *_handle = PyTuple_GET_ITEM(args, 1); /* shm_handle<MemBlock> */
-  PyObject *_size_bytes = PyTuple_GET_ITEM(args, 2);
-  if (!(THPUtils_checkLong(_device) && THPUtils_checkLong(_handle) &&
-        THPUtils_checkLong(_size_bytes))) {
-    THPUtils_invalidArguments(
-        args, nullptr, "_new_shared in CUDA mode", 1,
-        "(int device, int handle, int storage_size_bytes)");
-    return nullptr;
+  TORCH_WARN("THPStorage_newSharedCuda");
+  if (args.size() != 8) {
+    TORCH_WARN("tuple of 8 items expected: ", args.size(), ".");
+    return py::none();
   }
-  size_t storage_size =
-      (size_t)THPUtils_unpackLong(_size_bytes) / sizeof(uint8_t);
-  int64_t device = THPUtils_unpackLong(_device);
-  shm_handle<MemBlock> m_handle{PyLong_AsLong(_handle)};
+  long device = py::cast<long>(args[0]);
+  auto handle = static_cast<shm_handle<MemBlock>>(py::cast<long>(args[1]));
+  size_t storage_size = py::cast<size_t>(args[2]);
   at::cuda::CUDAGuard device_guard(device);
 
-  auto storage = GetTorchAllocator()->ReceiveHandle(m_handle, storage_size);
-  auto *torch_module = PyImport_ImportModule("torch");
-  auto *THPStorageClass =
-      PyObject_GetAttrString(torch_module, "UntypedStorage");
-  PyTypeObject *type = (PyTypeObject *)THPStorageClass;
-  PyObject *obj = type->tp_alloc(type, 0);
-  if (obj) {
-    ((THPStorage *)obj)->cdata = storage.release();
-  }
-  return obj;
-  END_HANDLE_TH_ERRORS
+  auto storage_impl = GetTorchAllocator()->ReceiveHandle(handle, storage_size);
+  py::object storage = py::module_::import("torch").attr("UntypedStorage")(0);
+  reinterpret_cast<THPStorage*>(storage.ptr())->cdata = storage_impl.release();
+  return storage;
+  END_HANDLE_TH_ERRORS_PYBIND
 }
 
-static PyObject *THPStorage_shareCuda(PyObject *_self, PyObject *noargs) {
+static py::tuple THPStorage_shareCuda(py::object *_self, py::args noargs) {
   HANDLE_TH_ERRORS
-  auto self = (THPStorage *)_self;
+  TORCH_WARN("THPStorage_shareCuda");
+  PyObject *py_object = _self->ptr();
+  auto *self = reinterpret_cast<THPStorage*>(py_object);
   c10::StorageImpl *storage = self->cdata;
-
+  
   auto *allocator = dynamic_cast<TorchAllocator *>(storage->allocator());
-  THPUtils_assert(allocator != nullptr, "Allocator should not be nullptr.");
-  THPUtils_assert(storage->data() != nullptr,
-                  "Storage should contains not-null data.");
+  if (allocator == nullptr) {
+    TORCH_WARN("Allocator should not be nullptr.");
+    return py::none();
+  } 
+  if (storage->data() == nullptr) {
+    TORCH_WARN("Storage should contains not-null data.");
+    return py::none();
+  }
 
   at::DeviceGuard device_guard(storage->device());
-
   auto _handle = allocator->SendHandle(storage);
-  THPObjectPtr tuple(PyTuple_New(3));
-  THPObjectPtr device(THPUtils_packInt32(storage->device().index()));
-  THPObjectPtr handle(THPUtils_packInt64(_handle));
-  THPObjectPtr size_bytes(THPUtils_packInt64(storage->nbytes()));
-
-  if (!tuple || !device || !handle) {
-    return nullptr;
-  }
-  PyTuple_SET_ITEM(tuple.get(), 0, device.release());
-  PyTuple_SET_ITEM(tuple.get(), 1, handle.release());
-  PyTuple_SET_ITEM(tuple.get(), 2, size_bytes.release());
-  return tuple.release();
-  END_HANDLE_TH_ERRORS
+  py::tuple tuple(8);
+  tuple[0] = static_cast<long>(storage->device().index()); // storage_device
+  tuple[1] = static_cast<size_t>(_handle); // storage_handle
+  tuple[2] = storage->nbytes(); // storage_size_bytes
+  tuple[3] = 0; // storage_offset_bytes
+  tuple[4] = 0; // ref_counter_handle
+  tuple[5] = 0; // ref_counter_offset
+  tuple[6] = 0; // event_handle
+  tuple[7] = false; // event_sync_required
+  return tuple;
+  END_HANDLE_TH_ERRORS_PYBIND
 }
 
 inline void RegisterCachingAllocator(py::module &m) {
@@ -182,7 +160,7 @@ inline void RegisterCachingAllocator(py::module &m) {
         auto &pages_pool_ref = *pages_pool.GetReference().GetObject();
         auto *caching_allocator = new SharableObject<CachingAllocator>{conf.shm_name, conf.shm_nbytes, pages_pool_ref, conf};
         return PyCachingAllocator{pages_pool, caching_allocator};
-      }))
+      }), py::return_value_policy::move)
       .def(
           "alloc",
           [](PyCachingAllocator &self, size_t nbytes, long cuda_stream,
@@ -200,10 +178,11 @@ inline void RegisterCachingAllocator(py::module &m) {
             return reinterpret_cast<long>(caching_allocator->GetBasePtr());
           });
   m.def("override_pytorch_allocator", OverridePyTorchAllocator);
+  m.def("reset_pytorch_allocator", ResetPyTorchAllocator);
   m.def("mpool_new_shared_cuda", THPStorage_newSharedCuda);
   m.def("mpool_share_cuda", THPStorage_shareCuda);
 }
-static Instance ins;
+
 inline void RegisterInstance(py::module &m) {
   class RAIIMemBlock {
   private:

@@ -35,16 +35,29 @@ void OverridePyTorchAllocator(PyCachingAllocator caching_allocator) {
   }
   torch_allocator_.reset(new TorchAllocator(std::move(caching_allocator)));
   c10::cuda::CUDACachingAllocator::allocator.store(torch_allocator_.get());
+  TORCH_WARN("Successfully override pytorch default allocator.");
+}
+
+void ResetPyTorchAllocator() {
+  torch_allocator_.reset();
 }
 
 
 void RawDeletePtr(void *ptr) {
   TORCH_CHECK(torch_allocator_ != nullptr, "Torch allocator is not set.");
+  if (ptr == nullptr) {
+    TORCH_WARN("ignore nullptr");
+    return;
+  }
   torch_allocator_->raw_delete(ptr);
 }
 
 void BlockDeletePtr(void *mem_block_ptr) {
   TORCH_CHECK(torch_allocator_ != nullptr, "Torch allocator is not set.");
+  if (mem_block_ptr == nullptr) {
+    TORCH_WARN("ignore nullptr");
+    return;
+  }
   auto *block = reinterpret_cast<MemBlock*>(mem_block_ptr);
   torch_allocator_->_caching_allocator->Free(block);
 }
@@ -52,11 +65,16 @@ void BlockDeletePtr(void *mem_block_ptr) {
 c10::DataPtr TorchAllocator::allocate(size_t nbytes) const {
   auto cur_device = at::cuda::current_device();
   cudaStream_t stream = c10::cuda::getCurrentCUDAStream(cur_device);
-  auto *block = const_cast<PyCachingAllocator&>(_caching_allocator)->Alloc(nbytes, stream);
-  auto *addr = const_cast<PyCachingAllocator&>(_caching_allocator)->GetBasePtr() + block->addr_offset;
-  c10::DataPtr data_ptr = {addr, block, BlockDeletePtr,
+c10::DataPtr data_ptr;
+  if (nbytes == 0) {
+          data_ptr = {nullptr, nullptr, BlockDeletePtr,
+                        c10::Device(c10::DeviceType::CUDA, cur_device)};
+  } else {
+      auto *block = const_cast<PyCachingAllocator&>(_caching_allocator)->Alloc(nbytes, stream);
+      auto *addr = const_cast<PyCachingAllocator&>(_caching_allocator)->GetBasePtr() + block->addr_offset;
+      data_ptr = {addr, block, BlockDeletePtr,
                            c10::Device(c10::DeviceType::CUDA, cur_device)};
-  // LOG(WARNING) << "allocate " << nbytes;
+  }
   return data_ptr;
 }
 

@@ -74,6 +74,7 @@ public:
 };
 
 void OverridePyTorchAllocator(PyCachingAllocator caching_allocator);
+void ResetPyTorchAllocator();
 
 TorchAllocator *GetTorchAllocator();
 } // namespace mpool

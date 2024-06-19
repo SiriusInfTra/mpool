@@ -46,32 +46,33 @@ MemBlock *CachingAllocator::Alloc(size_t nbytes, cudaStream_t cuda_stream,
   LOG_IF(INFO, VERBOSE_LEVEL >= 1)
       << "Alloc " << ByteDisplay(nbytes) << ", stream = " << cuda_stream
       << ", try_expand_VA = " << try_expand_VA << ".";
+  CHECK_GT(nbytes, 0);
   bip::scoped_lock lock{shared_memory_.GetMutex()};
-  LOG(INFO) << "ACQUIRE LOCK SUCCESS";
+  // LOG(INFO) << "ACQUIRE LOCK SUCCESS";
   CHECK(CHECK_LEVEL < 1 || CheckStateInternal(lock));
-  LOG(INFO) << "a0";
+  // LOG(INFO) << "a0";
   nbytes = (nbytes + config.align_nbytes - 1) & ~(config.align_nbytes - 1);
-  LOG(INFO) << "a1";
+  // LOG(INFO) << "a1";
   auto &stream_context = GetStreamContext(cuda_stream, lock);
-  LOG(INFO) << "a2";
+  // LOG(INFO) << "a2";
   auto *block = AllocWithContext(nbytes, stream_context, lock);
-  LOG(INFO) << "a3";
+  // LOG(INFO) << "a3";
   if (block == nullptr) {
     block = AllocWithContext(nbytes, global_stream_context_, lock);
   }
-  LOG(INFO) << "b";
+  // LOG(INFO) << "b";
   if (block == nullptr && try_expand_VA) {
     CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
     block = stream_context.stream_block_list.CreateEntryExpandVA(process_local_, nbytes);
-    LOG(INFO) << "c";
+    // LOG(INFO) << "c";
     LOG_IF(INFO, VERBOSE_LEVEL >= 3) << block;
     CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
     stream_context.stream_free_list.PushBlock(process_local_, block);
-    LOG(INFO) << "d";
+    // LOG(INFO) << "d";
     CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
     block = AllocWithContext(nbytes, stream_context, lock);
-    LOG(INFO) << "d";
-    LOG(INFO) << block;
+    // LOG(INFO) << "d";
+    // LOG(INFO) << block;
   }
   CHECK(CHECK_LEVEL < 2 || CheckStateInternal(lock));
   if (block != nullptr) {
@@ -198,9 +199,10 @@ bool CachingAllocator::CheckStateInternal(
 }
 
 MemBlock *CachingAllocator::ReceiveMemBlock(shm_handle<MemBlock> handle) {
-  LOG_IF(INFO, VERBOSE_LEVEL >= 0) << "Receive MemBlock: " << handle << ".";
   bip::scoped_lock lock{shared_memory_.GetMutex()};
   auto *mem_block = handle.ptr(shared_memory_);
+    LOG_IF(INFO, VERBOSE_LEVEL >= 0) << "Receive MemBlock: " << handle << " -> " << *mem_block << ".";
+  mapping_region_.EnsureMemBlockWithMappings(mem_block, all_block_list_);
   CHECK_GE(mem_block->addr_offset, 0) << "Invalid handle";
   return mem_block;
 }

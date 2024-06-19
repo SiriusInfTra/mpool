@@ -39,47 +39,51 @@ void MappingRegion::EnsureMemBlockWithMappings(
     MemBlock *block, bip_list<shm_handle<MemBlock>> &all_block_list) {
   CHECK_LE(block->addr_offset + block->nbytes,
            mem_block_nbytes * mem_block_num * va_range_scale);
-  /* 1. check whether the block is already mapped. */
-  if (block->unalloc_pages == 0) {
-    return;
-  }
+
   index_t va_range_l_i = PAGE_INDEX_L(block);
   index_t va_range_r_i = PAGE_INDEX_R(block);
 
-  /* 2. find missing pages mapping index. */
+  /* 1. find missing physical pages . */
   std::vector<index_t> missing_va_mapping_i;
-  if (shared_global_mappings_.size() < va_range_r_i) {
-    shared_global_mappings_.resize(va_range_r_i, INVALID_INDEX);
+  if (block->unalloc_pages > 0) {
+    if (shared_global_mappings_.size() < va_range_r_i) {
+      shared_global_mappings_.resize(va_range_r_i, INVALID_INDEX);
+    }
+    for (index_t index = va_range_l_i; index < va_range_r_i; ++index) {
+      if (shared_global_mappings_[index] == INVALID_INDEX) {
+        missing_va_mapping_i.push_back(index);
+      }
+    }
+    CHECK_EQ(block->unalloc_pages, missing_va_mapping_i.size())
+        << "Mismatch unalloc pages";
   }
 
-  for (index_t index = va_range_l_i; index < va_range_r_i; ++index) {
-    if (shared_global_mappings_[index] == INVALID_INDEX) {
-      missing_va_mapping_i.push_back(index);
+  /* 2. alloc physical pages if necessary */
+  if (!missing_va_mapping_i.empty()) {
+    std::vector<index_t> new_allocated_pages_index;
+    {
+      auto lock = page_pool_.Lock();
+      new_allocated_pages_index =
+          page_pool_.AllocDisPages(belong, missing_va_mapping_i.size(), lock);
+    }
+    CHECK_EQ(new_allocated_pages_index.size(), missing_va_mapping_i.size());
+    for (index_t k = 0; k < new_allocated_pages_index.size(); ++k) {
+      shared_global_mappings_[missing_va_mapping_i[k]] = new_allocated_pages_index[k];
     }
   }
-  CHECK_EQ(block->unalloc_pages, missing_va_mapping_i.size());
 
-  /* 3. alloc physical pages */
-  std::vector<index_t> new_allocated_pages_index;
-  {
-    auto lock = page_pool_.Lock();
-    new_allocated_pages_index =
-        page_pool_.AllocDisPages(belong, missing_va_mapping_i.size(), lock);
-  }
-  CHECK_EQ(new_allocated_pages_index.size(), missing_va_mapping_i.size());
-  for (index_t k = 0; k < new_allocated_pages_index.size(); ++k) {
-    shared_global_mappings_[missing_va_mapping_i[k]] =
-        new_allocated_pages_index[k];
-    // LOG(INFO) << "alloc " << new_allocated_pages_index[k];
-  }
-
-  /* 4. modify page table */
+  /* 3. modify local page table if necessary */
   if (self_page_table_.size() < va_range_r_i) {
     self_page_table_.resize(va_range_r_i, nullptr);
   }
   index_t min_va_i = std::numeric_limits<index_t>::max();
   index_t max_va_i = std::numeric_limits<index_t>::min();
   for (index_t k = va_range_l_i; k < va_range_r_i; ++k) {
+    if (self_page_table_[k] != nullptr &&
+        self_page_table_[k]->index != shared_global_mappings_[k]) {
+      CU_CALL(cuMemUnmap(reinterpret_cast<CUdeviceptr>(base_ptr_ + k * mem_block_nbytes), mem_block_nbytes));
+      self_page_table_[k] = nullptr;
+    }
     if (self_page_table_[k] == nullptr) {
       auto &page = page_pool_.PagesView()[shared_global_mappings_[k]];
       self_page_table_[k] = &page;
@@ -92,7 +96,7 @@ void MappingRegion::EnsureMemBlockWithMappings(
     }
     CHECK_EQ(self_page_table_[k]->index, shared_global_mappings_[k]);
   }
-  if (max_va_i < std::numeric_limits<index_t>::max()) {
+  if (min_va_i < std::numeric_limits<index_t>::max()) {
     auto *dev_ptr = base_ptr_ + min_va_i * mem_block_nbytes;
     size_t nbytes = (max_va_i - min_va_i + 1) * mem_block_nbytes;
     CUmemAccessDesc acc_desc = {
@@ -102,37 +106,40 @@ void MappingRegion::EnsureMemBlockWithMappings(
                            &acc_desc, 1));
   }
 
-  /* 5. update memory block unalloc_pages flag */
-  CHECK(!missing_va_mapping_i.empty()) << missing_va_mapping_i.size();
-  block->unalloc_pages = 0;
-  auto next_iter = std::next(block->iter_all_block_list);
-  while (next_iter != all_block_list.cend()) {
-    auto *next_block = next_iter->ptr(shared_memory_);
-    if (GetVirtualIndex(next_block->addr_offset) >
-        missing_va_mapping_i.back()) {
-      break;
+  /* 4. update memory block unalloc_pages flag */
+  if (!missing_va_mapping_i.empty()) {
+    block->unalloc_pages = 0;
+    auto next_iter = std::next(block->iter_all_block_list);
+    while (next_iter != all_block_list.cend()) {
+      auto *next_block = next_iter->ptr(shared_memory_);
+      if (GetVirtualIndex(next_block->addr_offset) >
+          missing_va_mapping_i.back()) {
+        break;
+      }
+      DCHECK_GE(next_block->unalloc_pages, 1);
+      next_block->unalloc_pages--;
+      DCHECK_EQ(next_block->unalloc_pages,
+                GetUnallocPages(next_block->addr_offset, next_block->nbytes))
+          << next_block;
+      next_iter++;
     }
-    DCHECK_GE(next_block->unalloc_pages, 1);
-    next_block->unalloc_pages--;
-    DCHECK_EQ(next_block->unalloc_pages,
-              GetUnallocPages(next_block->addr_offset, next_block->nbytes))
-        << next_block;
-    next_iter++;
-  }
-  auto prev_iter = block->iter_all_block_list;
-  while (prev_iter != all_block_list.cbegin()) {
-    --prev_iter;
-    auto *prev_block = prev_iter->ptr(shared_memory_);
-    if (GetVirtualIndex(prev_block->addr_offset + prev_block->nbytes - 1) <
-        missing_va_mapping_i.front()) {
-      break;
+    auto prev_iter = block->iter_all_block_list;
+    while (prev_iter != all_block_list.cbegin()) {
+      --prev_iter;
+      auto *prev_block = prev_iter->ptr(shared_memory_);
+      if (GetVirtualIndex(prev_block->addr_offset + prev_block->nbytes - 1) <
+          missing_va_mapping_i.front()) {
+        break;
+      }
+      DCHECK_GE(prev_block->unalloc_pages, 1);
+      prev_block->unalloc_pages--;
+      DCHECK_EQ(prev_block->unalloc_pages,
+                GetUnallocPages(prev_block->addr_offset, prev_block->nbytes))
+          << prev_block;
     }
-    DCHECK_GE(prev_block->unalloc_pages, 1);
-    prev_block->unalloc_pages--;
-    DCHECK_EQ(prev_block->unalloc_pages,
-              GetUnallocPages(prev_block->addr_offset, prev_block->nbytes))
-        << prev_block;
   }
+  
+  LOG(INFO) << "EnsureMemBlockWithMappings: " << self_page_table_;
 }
 
 int32_t MappingRegion::GetUnallocPages(ptrdiff_t addr_offset, size_t nbytes) {

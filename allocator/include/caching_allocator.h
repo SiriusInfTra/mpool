@@ -41,6 +41,8 @@ private:
   SharedMemory &shared_memory_;
   MappingRegion mapping_region_;
 
+  ProcessLocalData process_local_;
+
   bip_list<shm_handle<MemBlock>> &all_block_list_;
   StreamContext &global_stream_context_;
 
@@ -55,6 +57,8 @@ private:
 public:
   CachingAllocator(SharedMemory &shared_memory, PagesPool &page_pool,
                    CachingAllocatorConfig config, bool first_init);
+  
+  ~CachingAllocator();
 
   std::byte *GetBasePtr() const { return mapping_region_.GetBasePtr(); }
 
@@ -63,8 +67,6 @@ public:
   bool IsAllocatedPtr(std::byte *ptr) const {
     return ptr >= mapping_region_.GetBasePtr() && ptr < mapping_region_.GetEndPtr();
   }
-
-  ~CachingAllocator();
 
   MemBlock *Alloc(size_t nbytes, cudaStream_t cuda_stream,
                   bool try_expand_VA = true);

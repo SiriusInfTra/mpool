@@ -6,8 +6,11 @@
 #include <memory>
 #include <pages_pool.h>
 #include <random>
+#include <sched.h>
 #include <thread>
+#include <unistd.h>
 #include <unordered_set>
+#include <sys/wait.h>
 
 using namespace mpool;
 
@@ -62,13 +65,13 @@ void run(const PagesPoolConf &config, const std::string &name, int seed) {
   SharableObject<PagesPool> pages_pool{config.shm_name, config.shm_nbytes,
                                        config};
   CachingAllocatorConfig caching_allocator_config{.log_prefix = "CA ",
-                                                  .shm_name = "ca_wyk",
+                                                  .shm_name = "test_ca",
                                                   .shm_nbytes = 1_GB,
                                                   .va_range_scale = 4,
                                                   .belong_name = name,
                                                   .small_block_nbytes = 2_MB,
                                                   .align_nbytes = 512_B};
-  CachingAllocator::RemoveShm(caching_allocator_config);
+  // CachingAllocator::RemoveShm(caching_allocator_config);
   SharableObject<CachingAllocator> caching_allocator{
       caching_allocator_config.shm_name, caching_allocator_config.shm_nbytes,
       *pages_pool.GetObject(), caching_allocator_config};
@@ -82,7 +85,7 @@ void run(const PagesPoolConf &config, const std::string &name, int seed) {
     // caching_allocator_config.belong.GetPagesNum() << ".";
     size_t nbytes = std::uniform_int_distribution<num_t>(1, 1_GB)(rng);
     // auto lock = page_pool.Lock();
-    if (WrapMemBlock::GetTotalNBytes() + nbytes > 11_GB) {
+    if (WrapMemBlock::GetTotalNBytes() + nbytes > 4_GB) {
       std::shuffle(own_pages.begin(), own_pages.end(), rng);
       own_pages.clear();
       caching_allocator->EmptyCache();
@@ -99,11 +102,18 @@ int main() {
   PagesPoolConf conf{
       .page_nbytes = 32_MB,
       .pool_nbytes = 12_GB,
-      .shm_name = "mempool_wyk",
+      .shm_name = "test_pagepool",
       .log_prefix = "mempool",
       .shm_nbytes = 1_GB,
   };
-  PagesPool::RemoveShm(conf);
-  run(conf, "test", 0);
+  // PagesPool::RemoveShm(conf);
+  if (pid_t pid = fork(); pid == 0) {
+    run(conf, "test", 0);
+  } else {
+    run(conf, "test", 42);
+    int status;
+    pid_t wait_pid = wait(&status);
+    CHECK_EQ(wait_pid, pid);;
+  }
   std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 }

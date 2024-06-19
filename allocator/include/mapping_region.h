@@ -61,6 +61,12 @@ public:
 
 };
 
+struct ProcessLocalData {
+  PagesPool &page_pool_;
+  SharedMemory &shared_memory_;
+  MappingRegion &mapping_region_;
+};
+
 class Operation {
 public:
   virtual void Call() = 0;

@@ -1,9 +1,8 @@
+#include <caching_allocator.h>
 #include <mem_block.h>
 #include <pages.h>
-#include <caching_allocator.h>
 #include <shm.h>
 #include <util.h>
-
 
 #include <boost/unordered_map.hpp>
 
@@ -20,13 +19,14 @@ CachingAllocator::CachingAllocator(SharedMemory &shared_memory,
       config(std::move(config)), page_pool_(page_pool),
       shared_memory_(shared_memory),
       mapping_region_(shared_memory_, page_pool, belong,
-                      this->config.log_prefix, config.va_range_scale),
+                      this->config.log_prefix, this->config.va_range_scale),
+      process_local_{page_pool, shared_memory, mapping_region_},
       all_block_list_(
           *shared_memory_->find_or_construct<bip_list<shm_handle<MemBlock>>>(
               "CA_all_block_list")(shared_memory_->get_segment_manager())),
       global_stream_context_(*shared_memory_->find_or_construct<StreamContext>(
           "CA_global_stream_context")(
-          reinterpret_cast<cudaStream_t>(0), shared_memory_, mapping_region_,
+          process_local_, reinterpret_cast<cudaStream_t>(0), 
           all_block_list_, this->config.small_block_nbytes)),
       stream_context_map_(
           *shared_memory_->find_or_construct<
@@ -47,26 +47,31 @@ MemBlock *CachingAllocator::Alloc(size_t nbytes, cudaStream_t cuda_stream,
       << "Alloc " << ByteDisplay(nbytes) << ", stream = " << cuda_stream
       << ", try_expand_VA = " << try_expand_VA << ".";
   bip::scoped_lock lock{shared_memory_.GetMutex()};
+  LOG(INFO) << "ACQUIRE LOCK SUCCESS";
+  CHECK(CHECK_LEVEL < 1 || CheckStateInternal(lock));
+  LOG(INFO) << "a0";
   nbytes = (nbytes + config.align_nbytes - 1) & ~(config.align_nbytes - 1);
+  LOG(INFO) << "a1";
   auto &stream_context = GetStreamContext(cuda_stream, lock);
+  LOG(INFO) << "a2";
   auto *block = AllocWithContext(nbytes, stream_context, lock);
-  // LOG(INFO) << "a";
+  LOG(INFO) << "a3";
   if (block == nullptr) {
     block = AllocWithContext(nbytes, global_stream_context_, lock);
   }
-  // LOG(INFO) << "b";
+  LOG(INFO) << "b";
   if (block == nullptr && try_expand_VA) {
     CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
-    block = stream_context.stream_block_list.CreateEntryExpandVA(nbytes);
-    // LOG(INFO) << "c";
+    block = stream_context.stream_block_list.CreateEntryExpandVA(process_local_, nbytes);
+    LOG(INFO) << "c";
     LOG_IF(INFO, VERBOSE_LEVEL >= 3) << block;
     CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
-    stream_context.stream_free_list.PushBlock(block);
-    // LOG(INFO) << "d";
+    stream_context.stream_free_list.PushBlock(process_local_, block);
+    LOG(INFO) << "d";
     CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
     block = AllocWithContext(nbytes, stream_context, lock);
-    // LOG(INFO) << "d";
-    // LOG(INFO) << block;
+    LOG(INFO) << "d";
+    LOG(INFO) << block;
   }
   CHECK(CHECK_LEVEL < 2 || CheckStateInternal(lock));
   if (block != nullptr) {
@@ -85,6 +90,7 @@ void CachingAllocator::Free(const MemBlock *block0) {
   LOG_IF(INFO, VERBOSE_LEVEL > 2)
       << config.log_prefix << "Free block " << block;
   bip::scoped_lock lock{shared_memory_.GetMutex()};
+  CHECK(CHECK_LEVEL < 1 || CheckStateInternal(lock));
   if (--block->ref_count > 0) {
     return;
   }
@@ -92,29 +98,29 @@ void CachingAllocator::Free(const MemBlock *block0) {
   CHECK(!block->is_free) << block;
   CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
   if (block->is_small) {
-    block = context.stream_free_list.PushBlock(block);
+    block = context.stream_free_list.PushBlock(process_local_, block);
     CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
-    block = context.stream_free_list.MaybeMergeAdj(block);
+    block = context.stream_free_list.MaybeMergeAdj(process_local_, block);
     CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
   } else {
-    block = context.stream_free_list.PushBlock(block);
-    if (auto *prev_entry = context.stream_block_list.GetPrevEntry(block);
+    block = context.stream_free_list.PushBlock(process_local_, block);
+    if (auto *prev_entry = context.stream_block_list.GetPrevEntry(process_local_, block);
         prev_entry && prev_entry->is_small && prev_entry->is_free &&
         prev_entry->unalloc_pages == 0) {
       size_t prev_entry_nbytes = prev_entry->nbytes;
       auto *maybe_merged_entry =
-          context.stream_free_list.MaybeMergeAdj(prev_entry);
+          context.stream_free_list.MaybeMergeAdj(process_local_, prev_entry);
       CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
       if (maybe_merged_entry->nbytes > prev_entry_nbytes) {
         block = maybe_merged_entry;
       }
     }
-    if (auto *next_entry = context.stream_block_list.GetNextEntry(block);
+    if (auto *next_entry = context.stream_block_list.GetNextEntry(process_local_, block);
         next_entry && next_entry->is_small && next_entry->is_free &&
         next_entry->unalloc_pages == 0) {
       size_t next_entry_nbytes = next_entry->nbytes;
       auto *maybe_merged_entry =
-          context.stream_free_list.MaybeMergeAdj(next_entry);
+          context.stream_free_list.MaybeMergeAdj(process_local_, next_entry);
       CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
       if (maybe_merged_entry->nbytes > next_entry_nbytes) {
         block = maybe_merged_entry;
@@ -132,7 +138,7 @@ void CachingAllocator::EmptyCache() {
   mapping_region_.EmptyCache(all_block_list_);
   for (auto &[_, handle] : stream_context_map_) {
     auto stream_context = handle.ptr(shared_memory_);
-    stream_context->MoveFreeBlockTo(global_stream_context_);
+    stream_context->MoveFreeBlockTo(process_local_, global_stream_context_);
   }
   CHECK(CHECK_LEVEL < 1 || CheckStateInternal(lock));
 };
@@ -145,9 +151,8 @@ CachingAllocator::GetStreamContext(cudaStream_t cuda_stream,
     LOG(INFO) << "Init Stream context";
     auto *context =
         new (shared_memory_->allocate(sizeof(StreamContext))) StreamContext{
+          process_local_, 
             cuda_stream,
-            shared_memory_,
-            mapping_region_,
             all_block_list_,
             config.small_block_nbytes,
         };
@@ -165,16 +170,16 @@ CachingAllocator::AllocWithContext(size_t nbytes, StreamContext &stream_context,
   bool is_small = nbytes <= config.small_block_nbytes;
   CHECK(CHECK_LEVEL < 2 || CheckStateInternal(lock));
   auto *free_block =
-      stream_context.stream_free_list.PopBlock(is_small, nbytes, 50);
+      stream_context.stream_free_list.PopBlock(process_local_, is_small, nbytes, 50);
   CHECK(CHECK_LEVEL < 2 || CheckStateInternal(lock));
   // LOG(INFO) << free_block << " is small " << is_small;
   if (free_block == nullptr && is_small) {
-    free_block = stream_context.stream_free_list.PopBlock(
+    free_block = stream_context.stream_free_list.PopBlock(process_local_, 
         false, config.small_block_nbytes, 50);
     if (free_block != nullptr) {
       free_block->is_small = true;
-      free_block = stream_context.stream_free_list.PushBlock(free_block);
-      free_block = stream_context.stream_free_list.PopBlock(true, nbytes, 0);
+      free_block = stream_context.stream_free_list.PushBlock(process_local_, free_block);
+      free_block = stream_context.stream_free_list.PopBlock(process_local_, true, nbytes, 0);
     }
   }
   CHECK(CHECK_LEVEL < 2 || CheckStateInternal(lock));
@@ -183,11 +188,11 @@ CachingAllocator::AllocWithContext(size_t nbytes, StreamContext &stream_context,
 bool CachingAllocator::CheckStateInternal(
     const bip::scoped_lock<bip_mutex> &lock) {
   bool ret = true;
-  ret &= global_stream_context_.stream_block_list.CheckState(true);
-  ret &= global_stream_context_.stream_free_list.CheckState();
+  ret &= global_stream_context_.stream_block_list.CheckState(process_local_, true);
+  ret &= global_stream_context_.stream_free_list.CheckState(process_local_);
   for (auto &&[cuda_stream, context] : stream_context_map_) {
-    ret &= context.ptr(shared_memory_)->stream_block_list.CheckState();
-    ret &= context.ptr(shared_memory_)->stream_free_list.CheckState();
+    ret &= context.ptr(shared_memory_)->stream_block_list.CheckState(process_local_);
+    ret &= context.ptr(shared_memory_)->stream_free_list.CheckState(process_local_);
   }
   return ret;
 }

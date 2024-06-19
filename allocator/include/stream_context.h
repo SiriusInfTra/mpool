@@ -15,8 +15,6 @@ class StreamBlockList {
 
 private:
   cudaStream_t current_stream_;
-  MappingRegion &mapping_region_;
-  SharedMemory &shared_memory_;
 
   bip_list<shm_handle<MemBlock>> &all_block_list_;
   bip_list<shm_handle<MemBlock>> stream_block_list_;
@@ -25,32 +23,31 @@ private:
 
 public:
   StreamBlockList(cudaStream_t cuda_stream, SharedMemory &shared_memory,
-                  MappingRegion &mapping_region,
                   bip_list<shm_handle<MemBlock>> &all_block_list,
                   size_t small_block_nbytes);
   StreamBlockList &operator=(const StreamBlockList &) = delete;
   StreamBlockList(const StreamBlockList &) = delete;
 
-  MemBlock *CreateEntryExpandVA(size_t nbytes);
+  MemBlock *CreateEntryExpandVA(ProcessLocalData &local, size_t nbytes);
 
-  MemBlock *GetPrevEntry(MemBlock *entry);
+  MemBlock *GetPrevEntry(ProcessLocalData &local, MemBlock *entry);
 
-  MemBlock *GetNextEntry(MemBlock *entry);
+  MemBlock *GetNextEntry(ProcessLocalData &local, MemBlock *entry);
 
-  MemBlock *SplitBlock(MemBlock *origin_entry, size_t remain);
+  MemBlock *SplitBlock(ProcessLocalData &local, MemBlock *origin_entry, size_t remain);
 
-  MemBlock *MergeMemEntry(MemBlock *first_block, MemBlock *secound_block);
+  MemBlock *MergeMemEntry(ProcessLocalData &local, MemBlock *first_block, MemBlock *secound_block);
 
   std::pair<bip_list<shm_handle<MemBlock>>::const_iterator,
             bip_list<shm_handle<MemBlock>>::const_iterator>
   Iterators() const;
 
   void DumpMemBlockColumns(std::ostream &out);
-  void DumpMemBlock(std::ostream &out, MemBlock *block);
+  void DumpMemBlock(ProcessLocalData &local, std::ostream &out, MemBlock *block);
 
-  void DumpStreamBlockList(std::ostream &out = std::cout);
+  void DumpStreamBlockList(ProcessLocalData &local, std::ostream &out = std::cout);
 
-  bool CheckState(bool check_global_block_list = false);
+  bool CheckState(ProcessLocalData &local, bool check_global_block_list = false);
 };
 
 class StreamFreeList {
@@ -59,33 +56,30 @@ class StreamFreeList {
   static const constexpr size_t SMALL = true;
 
 private:
-  SharedMemory &shared_memory_;
   cudaStream_t current_stream_;
 
-  MappingRegion &mapping_region_;
-  StreamBlockList &stream_block_list_;
+  shm_handle<StreamBlockList> stream_block_list_;
 
   std::array<bip_multimap<size_t, shm_handle<MemBlock>>, 2> free_block_list_;
 
 public:
-  StreamFreeList(SharedMemory &shared_memory, cudaStream_t cuda_stream,
-                 MappingRegion &mapping_region,
+  StreamFreeList(cudaStream_t cuda_stream, SharedMemory &shared_memory, 
                  StreamBlockList &stream_block_list);
 
   StreamFreeList &operator=(const StreamFreeList &) = delete;
   StreamFreeList(const StreamFreeList &) = delete;
 
-  MemBlock *PopBlock(bool is_small, size_t nbytes, size_t find_optimal_retry);
+  MemBlock *PopBlock(ProcessLocalData &local, bool is_small, size_t nbytes, size_t find_optimal_retry);
 
-  MemBlock *PopBlock(MemBlock *block);
+  MemBlock *PopBlock(ProcessLocalData &local, MemBlock *block);
 
-  MemBlock *PushBlock(MemBlock *block);
+  MemBlock *PushBlock(ProcessLocalData &local, MemBlock *block);
 
-  MemBlock *MaybeMergeAdj(MemBlock *entry);
+  MemBlock *MaybeMergeAdj(ProcessLocalData &local, MemBlock *entry);
 
-  bool CheckState();
+  bool CheckState(ProcessLocalData &local);
 
-  void DumpFreeBlockList(bool is_small, std::ostream &out = std::cout);
+  void DumpFreeBlockList(ProcessLocalData &local, bool is_small, std::ostream &out = std::cout);
 };
 
 class StreamContext {
@@ -94,19 +88,15 @@ public:
   StreamBlockList stream_block_list;
   StreamFreeList stream_free_list;
 
-  StreamContext(cudaStream_t cuda_stream, SharedMemory &shared_memory,
-                MappingRegion &mapping_region,
-                bip_list<shm_handle<MemBlock>> &all_block_list,
+  StreamContext(ProcessLocalData &local, cudaStream_t cuda_stream, bip_list<shm_handle<MemBlock>> &all_block_list,
                 size_t small_block_nbytes)
       : cuda_stream{cuda_stream},
-        stream_block_list{cuda_stream, shared_memory, mapping_region,
-                          all_block_list, small_block_nbytes},
-        stream_free_list{shared_memory, cuda_stream, mapping_region,
-                         stream_block_list} {}
+        stream_block_list{cuda_stream, local.shared_memory_, all_block_list, small_block_nbytes},
+        stream_free_list{cuda_stream, local.shared_memory_, stream_block_list} {}
   StreamContext &operator=(const StreamContext &) = delete;
   StreamContext(const StreamContext &) = delete;
 
-  void MoveFreeBlockTo(StreamContext &other_context);
+  void MoveFreeBlockTo(ProcessLocalData &local, StreamContext &other_context);
 };
 
 } // namespace mpool

@@ -25,9 +25,11 @@ MappingRegion::MappingRegion(SharedMemory &shared_memory, PagesPool &page_pool,
   CU_CALL(cuMemAddressReserve(reinterpret_cast<CUdeviceptr *>(&base_ptr_),
                               mem_block_nbytes * mem_block_num * va_range_scale,
                               mem_block_nbytes, 0, 0));
-  LOG(INFO) << log_prefix << "dev_ptr = " << base_ptr_ << ".";
+  LOG(INFO) << log_prefix << "dev_ptr = " << base_ptr_
+            << ", mem_block_nbytes = " << mem_block_nbytes
+            << ", mem_block_num = " << mem_block_num
+            << ", va_range_scale = " << va_range_scale << ".";
 }
-
 
 index_t MappingRegion::GetVirtualIndex(ptrdiff_t addr_offset) const {
   return addr_offset / mem_block_nbytes;
@@ -61,14 +63,14 @@ void MappingRegion::EnsureMemBlockWithMappings(
   std::vector<index_t> new_allocated_pages_index;
   {
     auto lock = page_pool_.Lock();
-    new_allocated_pages_index = page_pool_.AllocDisPages(
-        belong, missing_va_mapping_i.size(), lock);
+    new_allocated_pages_index =
+        page_pool_.AllocDisPages(belong, missing_va_mapping_i.size(), lock);
   }
   CHECK_EQ(new_allocated_pages_index.size(), missing_va_mapping_i.size());
   for (index_t k = 0; k < new_allocated_pages_index.size(); ++k) {
     shared_global_mappings_[missing_va_mapping_i[k]] =
         new_allocated_pages_index[k];
-    LOG(INFO) << "alloc " << new_allocated_pages_index[k];
+    // LOG(INFO) << "alloc " << new_allocated_pages_index[k];
   }
 
   /* 4. modify page table */
@@ -101,8 +103,7 @@ void MappingRegion::EnsureMemBlockWithMappings(
   }
 
   /* 5. update memory block unalloc_pages flag */
-  CHECK(!missing_va_mapping_i.empty())
-      << missing_va_mapping_i.size();
+  CHECK(!missing_va_mapping_i.empty()) << missing_va_mapping_i.size();
   block->unalloc_pages = 0;
   auto next_iter = std::next(block->iter_all_block_list);
   while (next_iter != all_block_list.cend()) {
@@ -139,7 +140,8 @@ int32_t MappingRegion::GetUnallocPages(ptrdiff_t addr_offset, size_t nbytes) {
   index_t va_range_r_i = GetVirtualIndex(addr_offset + nbytes - 1) + 1;
   int unalloc_pages = 0;
   for (index_t index = va_range_l_i; index < va_range_r_i; ++index) {
-    if (index >= shared_global_mappings_.size() || shared_global_mappings_[index] == INVALID_INDEX) {
+    if (index >= shared_global_mappings_.size() ||
+        shared_global_mappings_[index] == INVALID_INDEX) {
       unalloc_pages++;
     }
   }

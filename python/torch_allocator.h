@@ -1,18 +1,18 @@
 #pragma once
 
-#include "caching_allocator.h"
-#include "mem_block.h"
-#include "shm.h"
 #include <cstddef>
+#include <unordered_map>
 
-#include <ATen/core/TensorBody.h>
+#include <caching_allocator.h>
+#include <mem_block.h>
+#include <shm.h>
+#include <py_wrap.hpp>
+
 #include <c10/core/Allocator.h>
 #include <c10/core/Storage.h>
 #include <c10/cuda/CUDACachingAllocator.h>
 #include <c10/cuda/CUDAStream.h>
-#include <unordered_map>
-
-#include "py_wrap.hpp"
+#include <ATen/core/TensorBody.h>
 
 namespace mpool {
 
@@ -67,8 +67,6 @@ public:
 
   std::string name() override;
 
-  /* */
-  
   c10::intrusive_ptr<c10::StorageImpl> ReceiveHandle(shm_handle<MemBlock> handle, size_t storage_size);
   shm_handle<MemBlock> SendHandle(c10::StorageImpl *storage);
 };

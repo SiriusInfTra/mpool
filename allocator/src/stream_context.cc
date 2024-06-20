@@ -5,7 +5,7 @@ namespace mpool {
 
 StreamBlockList::StreamBlockList(cudaStream_t cuda_stream,
                                  SharedMemory &shared_memory,
-                                 bip_list<shm_handle<MemBlock>> &all_block_list,
+                                 bip_list<shm_ptr<MemBlock>> &all_block_list,
                                  size_t small_block_nbytes)
     : current_stream_(cuda_stream), all_block_list_(all_block_list),
       stream_block_list_(shared_memory->get_segment_manager()),
@@ -30,7 +30,7 @@ StreamBlockList::CreateEntryExpandVA(ProcessLocalData &local,
                    local.mapping_region_.GetUnallocPages(addr_offset, nbytes),
                .is_free = false,
                .is_small = nbytes < small_block_nbytes_};
-  shm_handle handle{block, local.shared_memory_};
+  shm_ptr handle{block, local.shared_memory_};
   block->iter_all_block_list =
       all_block_list_.insert(all_block_list_.cend(), handle);
   block->iter_stream_block_list =
@@ -72,7 +72,7 @@ MemBlock *StreamBlockList::SplitBlock(ProcessLocalData &local,
                    .is_free = origin_entry->is_free,
                    .is_small = origin_entry->is_small,
                    .ref_count = 0};
-  shm_handle insert_after_entry_handle{insert_after_entry,
+  shm_ptr insert_after_entry_handle{insert_after_entry,
                                        local.shared_memory_};
   insert_after_entry->iter_all_block_list = all_block_list_.insert(
       std::next(origin_entry->iter_all_block_list), insert_after_entry_handle);
@@ -121,9 +121,9 @@ StreamFreeList::StreamFreeList(cudaStream_t cuda_stream,
                                StreamBlockList &stream_block_list)
     : current_stream_(cuda_stream),
       stream_block_list_{&stream_block_list, shared_memory},
-      free_block_list_{bip_multimap<size_t, shm_handle<MemBlock>>(
+      free_block_list_{bip_multimap<size_t, shm_ptr<MemBlock>>(
                            shared_memory->get_segment_manager()),
-                       bip_multimap<size_t, shm_handle<MemBlock>>(
+                       bip_multimap<size_t, shm_ptr<MemBlock>>(
                            shared_memory->get_segment_manager())} {}
 
 MemBlock *StreamFreeList::PopBlock(ProcessLocalData &local,
@@ -159,7 +159,7 @@ MemBlock *StreamFreeList::PopBlock(ProcessLocalData &local,
                             ->SplitBlock(local, block, nbytes);
     PushBlock(local, split_block);
     // split_block->iter_free_block_list = free_list.insert(std::make_pair(
-    // split_block->nbytes, shm_handle{split_block, shared_memory_}));
+    // split_block->nbytes, shm_ptr{split_block, shared_memory_}));
   }
   CHECK_EQ(block->ref_count, 0);
   return block;
@@ -200,7 +200,7 @@ MemBlock *StreamFreeList::PushBlock(ProcessLocalData &local,
   }
 
   block->iter_free_block_list = free_list.insert(
-      std::make_pair(block->nbytes, shm_handle{block, local.shared_memory_}));
+      std::make_pair(block->nbytes, shm_ptr{block, local.shared_memory_}));
   // LOG(INFO)  << "is small " << block->is_small << "free_list " <<
   // free_list.size();
   return block;
@@ -368,7 +368,7 @@ void StreamContext::MoveFreeBlockTo(ProcessLocalData &local,
                           .nbytes = 0};
   this->stream_block_list.stream_block_list_.insert(
       this->stream_block_list.stream_block_list_.cend(),
-      shm_handle{&last_mem_block, local.shared_memory_});
+      shm_ptr{&last_mem_block, local.shared_memory_});
 
   /* merge two stream_*/
   auto iter = this->stream_block_list.stream_block_list_.begin();
@@ -402,8 +402,8 @@ void StreamContext::MoveFreeBlockTo(ProcessLocalData &local,
   this->stream_block_list.stream_block_list_.erase(
       std::prev(this->stream_block_list.stream_block_list_.cend()));
 }
-std::pair<bip_list<shm_handle<MemBlock>>::const_iterator,
-          bip_list<shm_handle<MemBlock>>::const_iterator>
+std::pair<bip_list<shm_ptr<MemBlock>>::const_iterator,
+          bip_list<shm_ptr<MemBlock>>::const_iterator>
 StreamBlockList::Iterators() const {
   return {stream_block_list_.begin(), stream_block_list_.end()};
 }

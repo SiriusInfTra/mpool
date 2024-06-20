@@ -21,9 +21,9 @@ struct MemBlock {
   bool is_small;
   int32_t ref_count;
 
-  bip_list<shm_handle<MemBlock>>::iterator iter_all_block_list;
-  bip_list<shm_handle<MemBlock>>::iterator iter_stream_block_list;
-  bip_multimap<size_t, shm_handle<MemBlock>>::iterator iter_free_block_list;
+  bip_list<shm_ptr<MemBlock>>::iterator iter_all_block_list;
+  bip_list<shm_ptr<MemBlock>>::iterator iter_stream_block_list;
+  bip_multimap<size_t, shm_ptr<MemBlock>>::iterator iter_free_block_list;
 };
 
 inline std::ostream &operator<<(std::ostream &out, const MemBlock &block) {

@@ -45,7 +45,7 @@ public:
     * Otherwise, the virtual address range has valid mappings. So just do nothing. 
     */
   void EnsureMemBlockWithMappings(MemBlock *block,
-                           bip_list<shm_handle<MemBlock>> &all_block_list);
+                           bip_list<shm_ptr<MemBlock>> &all_block_list);
 
   int32_t GetUnallocPages(ptrdiff_t addr_offset, size_t nbytes);
 
@@ -53,7 +53,7 @@ public:
 
   void ReleasePages(const std::vector<index_t> &release_pages);
 
-  void EmptyCache(bip_list<shm_handle<MemBlock>> &block_list);
+  void EmptyCache(bip_list<shm_ptr<MemBlock>> &block_list);
 
   std::byte *GetBasePtr() const { return base_ptr_; }
 

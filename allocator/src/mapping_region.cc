@@ -36,7 +36,7 @@ index_t MappingRegion::GetVirtualIndex(ptrdiff_t addr_offset) const {
 }
 
 void MappingRegion::EnsureMemBlockWithMappings(
-    MemBlock *block, bip_list<shm_handle<MemBlock>> &all_block_list) {
+    MemBlock *block, bip_list<shm_ptr<MemBlock>> &all_block_list) {
   CHECK_LE(block->addr_offset + block->nbytes,
            mem_block_nbytes * mem_block_num * va_range_scale);
 
@@ -192,7 +192,7 @@ void MappingRegion::UnMapPages(const std::vector<index_t> &unmap_pages) {
 
 
 
-void MappingRegion::EmptyCache(bip_list<shm_handle<MemBlock>> &block_list) {
+void MappingRegion::EmptyCache(bip_list<shm_ptr<MemBlock>> &block_list) {
   LOG_IF(INFO, VERBOSE_LEVEL >= 0) << "EmptyCache";
   std::vector<index_t> release_pages;
   std::vector<index_t> unmap_pages;

@@ -16,14 +16,14 @@ class StreamBlockList {
 private:
   cudaStream_t current_stream_;
 
-  bip_list<shm_handle<MemBlock>> &all_block_list_;
-  bip_list<shm_handle<MemBlock>> stream_block_list_;
+  bip_list<shm_ptr<MemBlock>> &all_block_list_;
+  bip_list<shm_ptr<MemBlock>> stream_block_list_;
 
   size_t small_block_nbytes_;
 
 public:
   StreamBlockList(cudaStream_t cuda_stream, SharedMemory &shared_memory,
-                  bip_list<shm_handle<MemBlock>> &all_block_list,
+                  bip_list<shm_ptr<MemBlock>> &all_block_list,
                   size_t small_block_nbytes);
   StreamBlockList &operator=(const StreamBlockList &) = delete;
   StreamBlockList(const StreamBlockList &) = delete;
@@ -38,8 +38,8 @@ public:
 
   MemBlock *MergeMemEntry(ProcessLocalData &local, MemBlock *first_block, MemBlock *secound_block);
 
-  std::pair<bip_list<shm_handle<MemBlock>>::const_iterator,
-            bip_list<shm_handle<MemBlock>>::const_iterator>
+  std::pair<bip_list<shm_ptr<MemBlock>>::const_iterator,
+            bip_list<shm_ptr<MemBlock>>::const_iterator>
   Iterators() const;
 
   void DumpMemBlockColumns(std::ostream &out);
@@ -58,9 +58,9 @@ class StreamFreeList {
 private:
   cudaStream_t current_stream_;
 
-  shm_handle<StreamBlockList> stream_block_list_;
+  shm_ptr<StreamBlockList> stream_block_list_;
 
-  std::array<bip_multimap<size_t, shm_handle<MemBlock>>, 2> free_block_list_;
+  std::array<bip_multimap<size_t, shm_ptr<MemBlock>>, 2> free_block_list_;
 
 public:
   StreamFreeList(cudaStream_t cuda_stream, SharedMemory &shared_memory, 
@@ -88,7 +88,7 @@ public:
   StreamBlockList stream_block_list;
   StreamFreeList stream_free_list;
 
-  StreamContext(ProcessLocalData &local, cudaStream_t cuda_stream, bip_list<shm_handle<MemBlock>> &all_block_list,
+  StreamContext(ProcessLocalData &local, cudaStream_t cuda_stream, bip_list<shm_ptr<MemBlock>> &all_block_list,
                 size_t small_block_nbytes)
       : cuda_stream{cuda_stream},
         stream_block_list{cuda_stream, local.shared_memory_, all_block_list, small_block_nbytes},

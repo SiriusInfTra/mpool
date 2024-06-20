@@ -31,10 +31,10 @@ class Belong {
 
 private:
   SharedMemory &shared_memory_;
-  shm_handle<BelongImpl> handle_;
+  shm_ptr<BelongImpl> handle_;
 
 public:
-  Belong(shm_handle<BelongImpl> handle, SharedMemory &shared_memory)
+  Belong(shm_ptr<BelongImpl> handle, SharedMemory &shared_memory)
       : shared_memory_(shared_memory), handle_(handle) {}
   Belong(BelongImpl *impl, SharedMemory &shared_memory)
       : shared_memory_(shared_memory), handle_{impl, shared_memory} {}
@@ -55,11 +55,11 @@ public:
     return this->handle_ == rhs.handle_;
   }
 
-  bool operator==(const shm_handle<BelongImpl> &rhs) const {
+  bool operator==(const shm_ptr<BelongImpl> &rhs) const {
     return this->handle_ == rhs;
   }
 
-  operator shm_handle<BelongImpl>() const { return handle_; }
+  operator shm_ptr<BelongImpl>() const { return handle_; }
 
   friend std::ostream &operator<<(std::ostream &out, const Belong &belong) {
     out << belong.Get()->name;
@@ -70,7 +70,7 @@ public:
 class BelongRegistry {
 private:
   SharedMemory &shared_memory_;
-  bip_vector<shm_handle<BelongImpl>> *registered_belongs;
+  bip_vector<shm_ptr<BelongImpl>> *registered_belongs;
   bip::interprocess_sharable_mutex *mutex;
   BelongImpl *kFreeBelong;
 
@@ -84,7 +84,7 @@ public:
 
   void Init() {
     registered_belongs =
-        shared_memory_->find_or_construct<bip_vector<shm_handle<BelongImpl>>>(
+        shared_memory_->find_or_construct<bip_vector<shm_ptr<BelongImpl>>>(
             "BR_registered_belongs")(shared_memory_->get_segment_manager());
     mutex = shared_memory_->find_or_construct<bip::interprocess_sharable_mutex>(
         "BR_mutex")();
@@ -110,7 +110,7 @@ public:
     return {belong, shared_memory_};
   }
 
-  Belong GetBelong(shm_handle<BelongImpl> handle) {
+  Belong GetBelong(shm_ptr<BelongImpl> handle) {
     return {handle, shared_memory_};
   }
 

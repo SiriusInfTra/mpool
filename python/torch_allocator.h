@@ -67,8 +67,8 @@ public:
 
   std::string name() override;
 
-  c10::intrusive_ptr<c10::StorageImpl> ReceiveHandle(shm_handle<MemBlock> handle, size_t storage_size);
-  shm_handle<MemBlock> SendHandle(c10::StorageImpl *storage);
+  c10::intrusive_ptr<c10::StorageImpl> ReceiveHandle(shm_ptr<MemBlock> handle, size_t storage_size);
+  shm_ptr<MemBlock> SendHandle(c10::StorageImpl *storage);
 };
 
 void OverridePyTorchAllocator(PyCachingAllocator caching_allocator);

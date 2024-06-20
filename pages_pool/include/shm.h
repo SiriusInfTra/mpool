@@ -103,15 +103,15 @@ public:
   }
 };
 
-template <typename T> class shm_handle {
+template <typename T> class shm_ptr {
 private:
   bip_shm::handle_t handle_;
 
 public:
-  shm_handle() : handle_(reinterpret_cast<bip_shm::handle_t>(nullptr)) {}
-  shm_handle(bip_shm::handle_t handle) : handle_(handle) {}
-  shm_handle(T *t, bip_shm &shm) : handle_(shm.get_handle_from_address(t)) {}
-  shm_handle(T *t, SharedMemory &shm)
+  shm_ptr() : handle_(reinterpret_cast<bip_shm::handle_t>(nullptr)) {}
+  shm_ptr(bip_shm::handle_t handle) : handle_(handle) {}
+  shm_ptr(T *t, bip_shm &shm) : handle_(shm.get_handle_from_address(t)) {}
+  shm_ptr(T *t, SharedMemory &shm)
       : handle_(shm->get_handle_from_address(t)) {}
 
   T *ptr(bip_shm &shm) const {
@@ -125,7 +125,7 @@ public:
     return handle_;
   }
 
-  bool operator==(const shm_handle<T>& rhs) const {
+  bool operator==(const shm_ptr<T>& rhs) const {
     return this->handle_ == rhs.handle_;
   }
 };

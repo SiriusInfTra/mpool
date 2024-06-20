@@ -121,7 +121,7 @@ CUDAIpcTransfer::CUDAIpcTransfer(SharedMemory &shared_memory,
       pages_num_(conf.pool_nbytes / conf.page_nbytes),
       page_nbytes_(conf.page_nbytes) {
   shm_belong_list_ =
-      shared_memory->find_or_construct<shm_handle<BelongImpl>>("HT_belong_list")[pages_num_]();
+      shared_memory->find_or_construct<shm_ptr<BelongImpl>>("HT_belong_list")[pages_num_]();
   phy_pages_ref_.reserve(pages_num_);
 }
 

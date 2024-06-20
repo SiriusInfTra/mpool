@@ -32,7 +32,7 @@ struct PagesPoolConf {
 struct PhyPage {
     const size_t index;
     const CUmemGenericAllocationHandle cu_handle;
-    shm_handle<BelongImpl> * const belong;
+    shm_ptr<BelongImpl> * const belong;
 };
 
 inline std::ostream& operator<<(std::ostream& out, const PhyPage &page)    {

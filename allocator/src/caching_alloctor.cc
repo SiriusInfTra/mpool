@@ -22,7 +22,7 @@ CachingAllocator::CachingAllocator(SharedMemory &shared_memory,
                       this->config.log_prefix, this->config.va_range_scale),
       process_local_{page_pool, shared_memory, mapping_region_},
       all_block_list_(
-          *shared_memory_->find_or_construct<bip_list<shm_handle<MemBlock>>>(
+          *shared_memory_->find_or_construct<bip_list<shm_ptr<MemBlock>>>(
               "CA_all_block_list")(shared_memory_->get_segment_manager())),
       global_stream_context_(*shared_memory_->find_or_construct<StreamContext>(
           "CA_global_stream_context")(
@@ -30,7 +30,7 @@ CachingAllocator::CachingAllocator(SharedMemory &shared_memory,
           all_block_list_, this->config.small_block_nbytes)),
       stream_context_map_(
           *shared_memory_->find_or_construct<
-              bip_unordered_map<cudaStream_t, shm_handle<StreamContext>>>(
+              bip_unordered_map<cudaStream_t, shm_ptr<StreamContext>>>(
               "CA_stream_context_map")(shared_memory_->get_segment_manager())) {
   LOG_IF(INFO, VERBOSE_LEVEL >= 1)
       << this->config.log_prefix << "Init CachingAllocator";
@@ -158,7 +158,7 @@ CachingAllocator::GetStreamContext(cudaStream_t cuda_stream,
             config.small_block_nbytes,
         };
     auto [insert_iter, insert_succ] = stream_context_map_.insert(
-        std::make_pair(cuda_stream, shm_handle{context, shared_memory_}));
+        std::make_pair(cuda_stream, shm_ptr{context, shared_memory_}));
     CHECK(insert_succ);
     iter = insert_iter;
   }
@@ -198,7 +198,7 @@ bool CachingAllocator::CheckStateInternal(
   return ret;
 }
 
-MemBlock *CachingAllocator::ReceiveMemBlock(shm_handle<MemBlock> handle) {
+MemBlock *CachingAllocator::ReceiveMemBlock(shm_ptr<MemBlock> handle) {
   bip::scoped_lock lock{shared_memory_.GetMutex()};
   auto *mem_block = handle.ptr(shared_memory_);
     LOG_IF(INFO, VERBOSE_LEVEL >= 0) << "Receive MemBlock: " << handle << " -> " << *mem_block << ".";
@@ -206,8 +206,8 @@ MemBlock *CachingAllocator::ReceiveMemBlock(shm_handle<MemBlock> handle) {
   CHECK_GE(mem_block->addr_offset, 0) << "Invalid handle";
   return mem_block;
 }
-shm_handle<MemBlock> CachingAllocator::SendMemBlock(MemBlock *mem_block) {
-  shm_handle<MemBlock> handle{mem_block, shared_memory_};
+shm_ptr<MemBlock> CachingAllocator::SendMemBlock(MemBlock *mem_block) {
+  shm_ptr<MemBlock> handle{mem_block, shared_memory_};
   LOG_IF(INFO, VERBOSE_LEVEL >= 0)
       << "Send MemBlock: " << mem_block << " -> " << handle << ".";
   bip::scoped_lock lock{shared_memory_.GetMutex()};

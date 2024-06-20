@@ -43,10 +43,10 @@ private:
 
   ProcessLocalData process_local_;
 
-  bip_list<shm_handle<MemBlock>> &all_block_list_;
+  bip_list<shm_ptr<MemBlock>> &all_block_list_;
   StreamContext &global_stream_context_;
 
-  bip_unordered_map<cudaStream_t, shm_handle<StreamContext>>
+  bip_unordered_map<cudaStream_t, shm_ptr<StreamContext>>
       &stream_context_map_;
 
   StreamContext &GetStreamContext(cudaStream_t cuda_stream, const bip::scoped_lock<bip_mutex> &lock);
@@ -71,9 +71,9 @@ public:
   MemBlock *Alloc(size_t nbytes, cudaStream_t cuda_stream,
                   bool try_expand_VA = true);
 
-  MemBlock *ReceiveMemBlock(shm_handle<MemBlock> handle);
+  MemBlock *ReceiveMemBlock(shm_ptr<MemBlock> handle);
 
-  shm_handle<MemBlock> SendMemBlock(MemBlock *mem_block);
+  shm_ptr<MemBlock> SendMemBlock(MemBlock *mem_block);
 
   void Free(const MemBlock *block);
 

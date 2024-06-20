@@ -90,7 +90,7 @@ private:
   std::string client_sock_name_;
   MessageQueue message_queue_;
   std::vector<PhyPage> &phy_pages_ref_;
-  shm_handle<BelongImpl> *shm_belong_list_;
+  shm_ptr<BelongImpl> *shm_belong_list_;
   std::thread export_handle_thread_;
 
   const size_t pages_num_;

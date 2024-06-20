@@ -37,7 +37,7 @@ static py::object THPStorage_newSharedCuda(py::object _unused, py::args args) {
     return py::none();
   }
   long device = py::cast<long>(args[0]);
-  auto handle = static_cast<shm_handle<MemBlock>>(py::cast<long>(args[1]));
+  auto handle = static_cast<shm_ptr<MemBlock>>(py::cast<long>(args[1]));
   size_t storage_size = py::cast<size_t>(args[2]);
   at::cuda::CUDAGuard device_guard(device);
 

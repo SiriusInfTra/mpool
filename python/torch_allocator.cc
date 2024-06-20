@@ -204,7 +204,7 @@ bool TorchAllocator::needsPoolSpecificPeerAccess() {
 
 std::string TorchAllocator::name() { return "TorchAllocator"; }
 
-c10::intrusive_ptr<c10::StorageImpl> TorchAllocator::ReceiveHandle(shm_handle<MemBlock> handle,
+c10::intrusive_ptr<c10::StorageImpl> TorchAllocator::ReceiveHandle(shm_ptr<MemBlock> handle,
                                            size_t storage_size) {
   auto *mem_block = _caching_allocator->ReceiveMemBlock(handle);
   CHECK_LE(storage_size, mem_block->nbytes);
@@ -219,7 +219,7 @@ c10::intrusive_ptr<c10::StorageImpl> TorchAllocator::ReceiveHandle(shm_handle<Me
       /*resizable=*/false);
   return base;
 }
-shm_handle<MemBlock> TorchAllocator::SendHandle(c10::StorageImpl *storage) {
+shm_ptr<MemBlock> TorchAllocator::SendHandle(c10::StorageImpl *storage) {
   auto *mem_block =
       reinterpret_cast<MemBlock *>(storage->data_ptr().get_context());
   return _caching_allocator->SendMemBlock(mem_block);

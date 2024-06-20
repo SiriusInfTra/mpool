@@ -54,14 +54,21 @@ void RawDeletePtr(void *ptr) {
   torch_allocator_->raw_delete(ptr);
 }
 
-void BlockDeletePtr(void *mem_block_ptr) {
-  TORCH_CHECK(torch_allocator_ != nullptr, "Torch allocator is not set.");
-  if (mem_block_ptr == nullptr) {
-    TORCH_WARN("ignore nullptr");
-    return;
+void NullDeletePtr(void *null) {}
+
+void BlockDeletePtr(void *_extra_data) {
+  TORCH_CHECK_NOTNULL(torch_allocator_);
+  TORCH_CHECK_NOTNULL(_extra_data);
+  auto *extra_data = reinterpret_cast<MemBlockExtraData*>(_extra_data);
+  if (extra_data->require_device_sync) {
+    at::cuda::stream_synchronize(
+            c10::cuda::getCurrentCUDAStream(0));
   }
-  auto *block = reinterpret_cast<MemBlock*>(mem_block_ptr);
-  torch_allocator_->_caching_allocator->Free(block);
+  if (extra_data->require_event_sync) {
+    C10_CUDA_CHECK(cudaEventDestroy(extra_data->event));
+  }
+  torch_allocator_->_caching_allocator->Free(extra_data->mem_block);
+  delete extra_data;
 }
 
 c10::DataPtr TorchAllocator::allocate(size_t nbytes) const {
@@ -69,12 +76,15 @@ c10::DataPtr TorchAllocator::allocate(size_t nbytes) const {
   cudaStream_t stream = c10::cuda::getCurrentCUDAStream(cur_device);
 c10::DataPtr data_ptr;
   if (nbytes == 0) {
-          data_ptr = {nullptr, nullptr, BlockDeletePtr,
+          data_ptr = {nullptr, nullptr, NullDeletePtr,
                         c10::Device(c10::DeviceType::CUDA, cur_device)};
   } else {
       auto *block = const_cast<PyCachingAllocator&>(_caching_allocator)->Alloc(nbytes, stream);
       auto *addr = const_cast<PyCachingAllocator&>(_caching_allocator)->GetBasePtr() + block->addr_offset;
-      data_ptr = {addr, block, BlockDeletePtr,
+      auto *extra_data = new MemBlockExtraData{
+        false, false, 0, block
+      };
+      data_ptr = {addr, extra_data, BlockDeletePtr,
                            c10::Device(c10::DeviceType::CUDA, cur_device)};
   }
   return data_ptr;
@@ -205,13 +215,14 @@ bool TorchAllocator::needsPoolSpecificPeerAccess() {
 std::string TorchAllocator::name() { return "TorchAllocator"; }
 
 c10::intrusive_ptr<c10::StorageImpl> TorchAllocator::ReceiveHandle(shm_ptr<MemBlock> handle,
-                                           size_t storage_size) {
+                                           size_t storage_size, MemBlockExtraData *extra_data) {
   auto *mem_block = _caching_allocator->ReceiveMemBlock(handle);
+  extra_data->mem_block = mem_block;
   CHECK_LE(storage_size, mem_block->nbytes);
 
   auto cur_device = at::cuda::current_device();
   auto *addr = _caching_allocator->GetBasePtr() + mem_block->addr_offset;
-  c10::DataPtr data_ptr = {addr, mem_block, BlockDeletePtr,
+  c10::DataPtr data_ptr = {addr, extra_data, BlockDeletePtr,
                            c10::Device(c10::DeviceType::CUDA, cur_device)};
   auto base = c10::make_intrusive<at::StorageImpl>(
       c10::StorageImpl::use_byte_size_t(), storage_size, std::move(data_ptr),
@@ -221,7 +232,7 @@ c10::intrusive_ptr<c10::StorageImpl> TorchAllocator::ReceiveHandle(shm_ptr<MemBl
 }
 shm_ptr<MemBlock> TorchAllocator::SendHandle(c10::StorageImpl *storage) {
   auto *mem_block =
-      reinterpret_cast<MemBlock *>(storage->data_ptr().get_context());
+      reinterpret_cast<MemBlockExtraData *>(storage->data_ptr().get_context())->mem_block;
   return _caching_allocator->SendMemBlock(mem_block);
 }
 } // namespace mpool

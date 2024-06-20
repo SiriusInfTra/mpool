@@ -1,15 +1,17 @@
 #pragma once
 
 #include <Python.h>
-#include <c10/cuda/CUDAException.h>
-#include <c10/util/logging_is_not_google_glog.h>
+
+
 #include <cstring>
+
 #include <pybind11/cast.h>
 #include <pybind11/detail/common.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/pytypes.h>
 #include <pybind11/stl.h>
 
+#include <c10/cuda/CUDAException.h>
 #include <c10/cuda/CUDAGuard.h>
 #include <c10/util/Exception.h>
 #include <torch/csrc/Exceptions.h>
@@ -36,26 +38,30 @@ static py::object THPStorage_newSharedCuda(py::object _unused, py::args args) {
   TORCH_WARN("THPStorage_newSharedCuda");
   TORCH_CHECK_EQ(args.size(), 8) << "tuple of 8 items expected.";
   long device = py::cast<long>(args[0]);
-  auto handle = static_cast<shm_ptr<MemBlock>>(py::cast<long>(args[1]));
+  auto handle = static_cast<shm_ptr<MemBlock>>(py::cast<bip_shm::handle_t>(args[1]));
   size_t storage_size = py::cast<size_t>(args[2]);
 
   std::string s_ipc_event_handle = py::cast<py::bytes>(args[6]);
   bool event_sync_required = py::cast<bool>(args[7]);
-
+  cudaEvent_t event;
   if (event_sync_required) {
     cudaIpcEventHandle_t ipc_event_handle;
     TORCH_CHECK_EQ(s_ipc_event_handle.size(), sizeof(ipc_event_handle))
         << "Bad ipc event handle.";
     memcpy(&ipc_event_handle, s_ipc_event_handle.data(),
            sizeof(ipc_event_handle));
-    cudaEvent_t event;
+
     C10_CUDA_CHECK(cudaIpcOpenEventHandle(&event, ipc_event_handle));
     C10_CUDA_CHECK(
         cudaStreamWaitEvent(c10::cuda::getCurrentCUDAStream(device), event, 0));
   }
   at::cuda::CUDAGuard device_guard(device);
-
-  auto storage_impl = GetTorchAllocator()->ReceiveHandle(handle, storage_size);
+  auto *extra_data = new MemBlockExtraData{
+      .require_device_sync = true,
+      .require_event_sync = event_sync_required,
+      .event = event
+  };
+  auto storage_impl = GetTorchAllocator()->ReceiveHandle(handle, storage_size, extra_data);
   py::object storage = py::module_::import("torch").attr("UntypedStorage")(0);
   reinterpret_cast<THPStorage *>(storage.ptr())->cdata = storage_impl.release();
   return storage;
@@ -90,13 +96,13 @@ static py::tuple THPStorage_shareCuda(py::object *_self, py::args noargs) {
                                  sizeof(event_handle));
   py::tuple tuple(8);
   tuple[0] = static_cast<long>(storage->device().index()); // storage_device
-  tuple[1] = static_cast<size_t>(_handle);                 // storage_handle
+  tuple[1] = static_cast<bip_shm::handle_t>(_handle);      // storage_handle
   tuple[2] = storage->nbytes();                            // storage_size_bytes
   tuple[3] = 0;                             // storage_offset_bytes
   tuple[4] = 0;                             // ref_counter_handle
   tuple[5] = 0;                             // ref_counter_offset
   tuple[6] = py::bytes(s_ipc_event_handle); // event_handle
-  tuple[7] = false;                         // event_sync_required
+  tuple[7] = true;                         // event_sync_required
   return tuple;
   END_HANDLE_TH_ERRORS_PYBIND
 }

@@ -16,6 +16,12 @@
 
 namespace mpool {
 
+struct MemBlockExtraData {
+  bool require_device_sync;
+  bool require_event_sync;
+  cudaEvent_t event;
+  MemBlock *mem_block;
+};
 class TorchAllocator : public c10::cuda::CUDACachingAllocator::CUDAAllocator {
 public:
   PyCachingAllocator _caching_allocator;
@@ -67,7 +73,7 @@ public:
 
   std::string name() override;
 
-  c10::intrusive_ptr<c10::StorageImpl> ReceiveHandle(shm_ptr<MemBlock> handle, size_t storage_size);
+  c10::intrusive_ptr<c10::StorageImpl> ReceiveHandle(shm_ptr<MemBlock> handle, size_t storage_size, MemBlockExtraData *extra_data);
   shm_ptr<MemBlock> SendHandle(c10::StorageImpl *storage);
 };
 

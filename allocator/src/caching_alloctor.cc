@@ -88,7 +88,7 @@ MemBlock *CachingAllocator::Alloc(size_t nbytes, cudaStream_t cuda_stream,
 
 void CachingAllocator::Free(const MemBlock *block0) {
   auto *block = const_cast<MemBlock *>(block0);
-  LOG_IF(INFO, VERBOSE_LEVEL > 2)
+  LOG_IF(INFO, VERBOSE_LEVEL >= 1)
       << config.log_prefix << "Free block " << block;
   bip::scoped_lock lock{shared_memory_.GetMutex()};
   CHECK(CHECK_LEVEL < 1 || CheckStateInternal(lock));

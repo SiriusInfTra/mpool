@@ -18,8 +18,8 @@
 namespace mpool {
 namespace bip = boost::interprocess;
 
-const static constexpr unsigned VERBOSE_LEVEL = 3; /* 0 ~ 2*/
-const static constexpr unsigned CHECK_LEVEL = 3; /* 0 ~ 3 */
+const static constexpr unsigned VERBOSE_LEVEL = 1; /* 0 ~ 2*/
+const static constexpr unsigned CHECK_LEVEL = 1; /* 0 ~ 3 */
 
 struct PagesPoolConf {
         size_t page_nbytes;
@@ -49,7 +49,12 @@ inline std::ostream& operator<<(std::ostream& out, const std::vector<const PhyPa
     out << "{len=" << pages.size() << "|";
     for (size_t k = 0; k < pages.size(); ++k) {
         if (k != 0) { out << ","; }
-        out << pages[k]->index;
+        if (pages[k] != nullptr) {
+            out << pages[k]->index;
+        } else {
+            out << -1;
+        }
+
     }
     out << "}";
     return out;

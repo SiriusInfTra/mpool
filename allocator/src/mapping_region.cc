@@ -157,24 +157,20 @@ int32_t MappingRegion::GetUnallocPages(ptrdiff_t addr_offset, size_t nbytes) {
       << ByteDisplay(nbytes);
   return unalloc_pages;
 }
-void MappingRegion::UnMapPages(const std::vector<index_t> &release_pages) {
-  /* 1. release physical page to mem pool */
-  {
-    std::vector<index_t> pages;
-    for (index_t mapping_index : release_pages) {
-      index_t page_index = self_page_table_[mapping_index]->index;
-      self_page_table_[mapping_index] = nullptr;
-      pages.push_back(page_index);
-    }
-    auto lock = page_pool_.Lock();
-    page_pool_.FreePages(pages, belong, lock);
-  }
 
-  /* 2. unmap corresponding physical pages */
-  auto iter = release_pages.cbegin();
+void MappingRegion::ReleasePages(const std::vector<index_t> &release_pages) {
+  auto lock = page_pool_.Lock();
+  page_pool_.FreePages(release_pages, belong, lock);
+}
+
+void MappingRegion::UnMapPages(const std::vector<index_t> &unmap_pages) {
+  for (auto index : unmap_pages) {
+    self_page_table_[index] = nullptr;
+  }
+  auto iter = unmap_pages.cbegin();
   do {
     auto iter_dis =
-        std::adjacent_find(iter, release_pages.cend(),
+        std::adjacent_find(iter, unmap_pages.cend(),
                            [](index_t a, index_t b) { return a + 1 != b; });
     if (iter != iter_dis) {
       /* unmap continuous physical pages */
@@ -182,7 +178,7 @@ void MappingRegion::UnMapPages(const std::vector<index_t> &release_pages) {
           reinterpret_cast<CUdeviceptr>(base_ptr_ + *iter * mem_block_nbytes),
           std::distance(iter, iter_dis) * mem_block_nbytes));
     }
-    if (iter_dis != release_pages.cend()) {
+    if (iter_dis != unmap_pages.cend()) {
       /* unmap discontinuous physical pages */
       CU_CALL(cuMemUnmap(reinterpret_cast<CUdeviceptr>(
                              base_ptr_ + *iter_dis * mem_block_nbytes),
@@ -191,27 +187,36 @@ void MappingRegion::UnMapPages(const std::vector<index_t> &release_pages) {
     } else {
       break;
     }
-  } while (iter != release_pages.cend());
+  } while (iter != unmap_pages.cend());
 }
+
+
+
 void MappingRegion::EmptyCache(bip_list<shm_handle<MemBlock>> &block_list) {
   LOG_IF(INFO, VERBOSE_LEVEL >= 0) << "EmptyCache";
   std::vector<index_t> release_pages;
+  std::vector<index_t> unmap_pages;
   auto iter = block_list.begin();
   auto block = iter->ptr(shared_memory_);
   for (index_t mapping_index = 0; mapping_index < self_page_table_.size();) {
-    if (self_page_table_[mapping_index] == nullptr) {
+    /* 1. ignore dummy cases. */
+    // ignore virtual pages with no physical block.
+    if (shared_global_mappings_[mapping_index] == INVALID_INDEX) {
+      if (self_page_table_[mapping_index] != nullptr) {
+        unmap_pages.push_back(mapping_index);
+      }
       mapping_index++;
       continue;
     }
 
-    if (index_t block_mapping_index_begin = GetVirtualIndex(block->addr_offset);
+    // ignore logical memory block with no physical block. 
+    if (index_t block_mapping_index_begin = PAGE_INDEX_L(block);
         block_mapping_index_begin > mapping_index) {
       mapping_index = block_mapping_index_begin;
       continue;
     }
 
-    while (GetVirtualIndex(block->addr_offset + block->nbytes - 1) <
-           mapping_index) {
+    while (mapping_index >= PAGE_INDEX_R(block)) {
       iter++;
       block = iter->ptr(shared_memory_);
     }
@@ -241,14 +246,16 @@ void MappingRegion::EmptyCache(bip_list<shm_handle<MemBlock>> &block_list) {
     }
     /* 3. release page if free and update block's unalloc page. */
     if (page_is_free) {
+      release_pages.push_back(shared_global_mappings_[mapping_index]);
       shared_global_mappings_[mapping_index] = INVALID_INDEX;
-      release_pages.push_back(mapping_index);
       for (auto block1 : blocks_with_pages) {
         block1->unalloc_pages++;
       }
     }
     mapping_index++;
   }
-  UnMapPages(release_pages);
+  ReleasePages(release_pages);
+  // UnMapPages(unmap_pages);
 }
+
 } // namespace mpool

@@ -49,7 +49,9 @@ public:
 
   int32_t GetUnallocPages(ptrdiff_t addr_offset, size_t nbytes);
 
-  void UnMapPages(const std::vector<index_t> &release_pages);
+  void UnMapPages(const std::vector<index_t> &unmap_pages);
+
+  void ReleasePages(const std::vector<index_t> &release_pages);
 
   void EmptyCache(bip_list<shm_handle<MemBlock>> &block_list);
 

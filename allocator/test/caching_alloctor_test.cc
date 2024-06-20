@@ -67,7 +67,7 @@ void run(const PagesPoolConf &config, const std::string &name, int seed) {
   CachingAllocatorConfig caching_allocator_config{.log_prefix = "CA ",
                                                   .shm_name = "test_ca",
                                                   .shm_nbytes = 1_GB,
-                                                  .va_range_scale = 4,
+                                                  .va_range_scale = 8,
                                                   .belong_name = name,
                                                   .small_block_nbytes = 2_MB,
                                                   .align_nbytes = 512_B};
@@ -85,7 +85,7 @@ void run(const PagesPoolConf &config, const std::string &name, int seed) {
     // caching_allocator_config.belong.GetPagesNum() << ".";
     size_t nbytes = std::uniform_int_distribution<num_t>(1, 1_GB)(rng);
     // auto lock = page_pool.Lock();
-    if (WrapMemBlock::GetTotalNBytes() + nbytes > 4_GB) {
+    if (WrapMemBlock::GetTotalNBytes() + nbytes > 5_GB) {
       std::shuffle(own_pages.begin(), own_pages.end(), rng);
       own_pages.clear();
       caching_allocator->EmptyCache();

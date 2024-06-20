@@ -1,3 +1,4 @@
+#include "pages.h"
 #include <stream_context.h>
 
 namespace mpool {
@@ -174,7 +175,7 @@ MemBlock *StreamFreeList::PopBlock(ProcessLocalData &local,
 
 MemBlock *StreamFreeList::PushBlock(ProcessLocalData &local,
                                     MemBlock *block) {
-  LOG(INFO) << "PushBlock " << *block;
+  LOG_IF(INFO, VERBOSE_LEVEL >= 2) << "PushBlock " << *block;
   CHECK_GT(block->nbytes, 0) << block;
   auto &free_list = free_block_list_[block->is_small];
   block->is_free = true;

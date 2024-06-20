@@ -31,6 +31,7 @@ def use_shared_tensor():
     del page_pool
 
 def reset_shared_tensor():
+    return
     mpool.reset_pytorch_allocator()
 
 def producer(q: mp.Queue, lock: mp.Lock):
@@ -46,7 +47,8 @@ def producer(q: mp.Queue, lock: mp.Lock):
         q.put(tensor)
         # lock.release()
         print("Launch producer ok")
-        time.sleep(20)
+        time.sleep(10)
+        print(f"Shared tensor after modified: {tensor}")
         reset_shared_tensor()
         print("Launch producer exit")
     except Exception as e:
@@ -56,7 +58,7 @@ def producer(q: mp.Queue, lock: mp.Lock):
 def consumer(q: mp.Queue, lock: mp.Lock):
     try:
         print("Launch consumer1")
-        time.sleep(3)
+        # time.sleep(3)
         use_shared_tensor()
         print("Launch consumer2")
         # lock.acquire()

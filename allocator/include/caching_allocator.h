@@ -26,7 +26,6 @@ struct CachingAllocatorConfig {
 };
 
 
-
 class CachingAllocator {
 public:
   const Belong belong;

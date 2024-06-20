@@ -25,4 +25,12 @@ target_link_libraries(mpool PRIVATE pages_pool)
 include(cmake/glog.cmake)
 
 
-target_compile_options(mpool PUBLIC -g -O0)
+# add_custom_target(PostBuild ALL
+#     COMMAND ${CMAKE_COMMAND} -E echo "Build complete. Running pip install ./python..."
+#     COMMAND ${CMAKE_COMMAND} -E env pip install ./python
+#     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+#     COMMENT "Running post-build commands"
+# )
+
+# # 确保 PostBuild 目标在所有其他目标完成后执行
+# add_dependencies(PostBuild mpool)

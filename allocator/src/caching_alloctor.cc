@@ -20,14 +20,14 @@ CachingAllocator::CachingAllocator(SharedMemory &shared_memory,
       shared_memory_(shared_memory),
       mapping_region_(shared_memory_, page_pool, belong,
                       this->config.log_prefix, this->config.va_range_scale),
-      process_local_{page_pool, shared_memory, mapping_region_},
       all_block_list_(
           *shared_memory_->find_or_construct<bip_list<shm_ptr<MemBlock>>>(
               "CA_all_block_list")(shared_memory_->get_segment_manager())),
+      process_local_{page_pool, shared_memory, mapping_region_, all_block_list_},
       global_stream_context_(*shared_memory_->find_or_construct<StreamContext>(
           "CA_global_stream_context")(
-          process_local_, reinterpret_cast<cudaStream_t>(0), 
-          all_block_list_, this->config.small_block_nbytes)),
+          process_local_, page_pool.config.device_id, nullptr, 
+          this->config.small_block_nbytes)),
       stream_context_map_(
           *shared_memory_->find_or_construct<
               bip_unordered_map<cudaStream_t, shm_ptr<StreamContext>>>(
@@ -153,8 +153,8 @@ CachingAllocator::GetStreamContext(cudaStream_t cuda_stream,
     auto *context =
         new (shared_memory_->allocate(sizeof(StreamContext))) StreamContext{
           process_local_, 
+            page_pool_.config.device_id,
             cuda_stream,
-            all_block_list_,
             config.small_block_nbytes,
         };
     auto [insert_iter, insert_succ] = stream_context_map_.insert(

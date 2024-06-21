@@ -67,6 +67,7 @@ struct ProcessLocalData {
   PagesPool &page_pool_;
   SharedMemory &shared_memory_;
   MappingRegion &mapping_region_;
+  bip_list<shm_ptr<MemBlock>> &all_block_list_;
 };
 
 class Operation {

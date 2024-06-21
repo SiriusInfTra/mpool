@@ -14,16 +14,15 @@ class StreamBlockList {
   friend class StreamContext;
 
 private:
+  int device_id;
   cudaStream_t current_stream_;
 
-  bip_list<shm_ptr<MemBlock>> &all_block_list_;
   bip_list<shm_ptr<MemBlock>> stream_block_list_;
 
   size_t small_block_nbytes_;
 
 public:
-  StreamBlockList(cudaStream_t cuda_stream, SharedMemory &shared_memory,
-                  bip_list<shm_ptr<MemBlock>> &all_block_list,
+  StreamBlockList(int device_id, cudaStream_t cuda_stream, SharedMemory &shared_memory,
                   size_t small_block_nbytes);
   StreamBlockList &operator=(const StreamBlockList &) = delete;
   StreamBlockList(const StreamBlockList &) = delete;
@@ -56,6 +55,7 @@ class StreamFreeList {
   static const constexpr size_t SMALL = true;
 
 private:
+  int device_id;
   cudaStream_t current_stream_;
 
   shm_ptr<StreamBlockList> stream_block_list_;
@@ -63,7 +63,7 @@ private:
   std::array<bip_multimap<size_t, shm_ptr<MemBlock>>, 2> free_block_list_;
 
 public:
-  StreamFreeList(cudaStream_t cuda_stream, SharedMemory &shared_memory, 
+  StreamFreeList(int device_id, cudaStream_t cuda_stream, SharedMemory &shared_memory, 
                  StreamBlockList &stream_block_list);
 
   StreamFreeList &operator=(const StreamFreeList &) = delete;
@@ -84,15 +84,16 @@ public:
 
 class StreamContext {
 public:
+  int device_id;
   const cudaStream_t cuda_stream;
   StreamBlockList stream_block_list;
   StreamFreeList stream_free_list;
 
-  StreamContext(ProcessLocalData &local, cudaStream_t cuda_stream, bip_list<shm_ptr<MemBlock>> &all_block_list,
+  StreamContext(ProcessLocalData &local, int device_id, cudaStream_t cuda_stream,
                 size_t small_block_nbytes)
-      : cuda_stream{cuda_stream},
-        stream_block_list{cuda_stream, local.shared_memory_, all_block_list, small_block_nbytes},
-        stream_free_list{cuda_stream, local.shared_memory_, stream_block_list} {}
+      : device_id(device_id), cuda_stream{cuda_stream},
+        stream_block_list{device_id, cuda_stream, local.shared_memory_, small_block_nbytes},
+        stream_free_list{device_id, cuda_stream, local.shared_memory_, stream_block_list} {}
   StreamContext &operator=(const StreamContext &) = delete;
   StreamContext(const StreamContext &) = delete;
 

@@ -39,10 +39,10 @@ private:
   PagesPool &page_pool_;
   SharedMemory &shared_memory_;
   MappingRegion mapping_region_;
-
+  bip_list<shm_ptr<MemBlock>> &all_block_list_;
   ProcessLocalData process_local_;
 
-  bip_list<shm_ptr<MemBlock>> &all_block_list_;
+
   StreamContext &global_stream_context_;
 
   bip_unordered_map<cudaStream_t, shm_ptr<StreamContext>>

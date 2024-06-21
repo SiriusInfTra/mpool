@@ -3,23 +3,21 @@
 
 namespace mpool {
 
-StreamBlockList::StreamBlockList(cudaStream_t cuda_stream,
+StreamBlockList::StreamBlockList(int device_id, cudaStream_t cuda_stream,
                                  SharedMemory &shared_memory,
-                                 bip_list<shm_ptr<MemBlock>> &all_block_list,
                                  size_t small_block_nbytes)
-    : current_stream_(cuda_stream), all_block_list_(all_block_list),
+    : device_id(device_id), current_stream_(cuda_stream),
       stream_block_list_(shared_memory->get_segment_manager()),
       small_block_nbytes_(small_block_nbytes) {}
 
-MemBlock *
-StreamBlockList::CreateEntryExpandVA(ProcessLocalData &local,
-                                     size_t nbytes) {
+MemBlock *StreamBlockList::CreateEntryExpandVA(ProcessLocalData &local,
+                                               size_t nbytes) {
   ptrdiff_t addr_offset;
-  if (all_block_list_.empty()) {
+  if (local.all_block_list_.empty()) {
     addr_offset = 0;
   } else {
     auto *last_block =
-        std::prev(all_block_list_.cend())->ptr(local.shared_memory_);
+        std::prev(local.all_block_list_.cend())->ptr(local.shared_memory_);
     addr_offset = last_block->addr_offset + last_block->nbytes;
   }
   auto *block = new (local.shared_memory_->allocate(sizeof(MemBlock)))
@@ -28,31 +26,30 @@ StreamBlockList::CreateEntryExpandVA(ProcessLocalData &local,
                .stream = current_stream_,
                .unalloc_pages =
                    local.mapping_region_.GetUnallocPages(addr_offset, nbytes),
+               .device_id = device_id,
                .is_free = false,
                .is_small = nbytes < small_block_nbytes_};
   shm_ptr handle{block, local.shared_memory_};
   block->iter_all_block_list =
-      all_block_list_.insert(all_block_list_.cend(), handle);
+      local.all_block_list_.insert(local.all_block_list_.cend(), handle);
   block->iter_stream_block_list =
       stream_block_list_.insert(stream_block_list_.cend(), handle);
   return block;
 }
 
-MemBlock *
-StreamBlockList::GetPrevEntry(ProcessLocalData &local,
-                              MemBlock *entry) {
+MemBlock *StreamBlockList::GetPrevEntry(ProcessLocalData &local,
+                                        MemBlock *entry) {
   auto iter = entry->iter_all_block_list;
-  if (iter == all_block_list_.cbegin()) {
+  if (iter == local.all_block_list_.cbegin()) {
     return nullptr;
   }
   return std::prev(iter)->ptr(local.shared_memory_);
 }
 
-MemBlock *
-StreamBlockList::GetNextEntry(ProcessLocalData &local,
-                              MemBlock *entry) {
+MemBlock *StreamBlockList::GetNextEntry(ProcessLocalData &local,
+                                        MemBlock *entry) {
   auto iter = std::next(entry->iter_all_block_list);
-  if (iter == all_block_list_.cend()) {
+  if (iter == local.all_block_list_.cend()) {
     return nullptr;
   }
   return iter->ptr(local.shared_memory_);
@@ -69,12 +66,12 @@ MemBlock *StreamBlockList::SplitBlock(ProcessLocalData &local,
                                   static_cast<ptrdiff_t>(remain),
                    .nbytes = origin_entry->nbytes - remain,
                    .stream = origin_entry->stream,
+                   .device_id = origin_entry->device_id,
                    .is_free = origin_entry->is_free,
                    .is_small = origin_entry->is_small,
                    .ref_count = 0};
-  shm_ptr insert_after_entry_handle{insert_after_entry,
-                                       local.shared_memory_};
-  insert_after_entry->iter_all_block_list = all_block_list_.insert(
+  shm_ptr insert_after_entry_handle{insert_after_entry, local.shared_memory_};
+  insert_after_entry->iter_all_block_list = local.all_block_list_.insert(
       std::next(origin_entry->iter_all_block_list), insert_after_entry_handle);
   insert_after_entry->iter_stream_block_list =
       stream_block_list_.insert(std::next(origin_entry->iter_stream_block_list),
@@ -92,9 +89,9 @@ MemBlock *StreamBlockList::SplitBlock(ProcessLocalData &local,
   return insert_after_entry;
 }
 
-MemBlock *
-StreamBlockList::MergeMemEntry(ProcessLocalData &local,
-                               MemBlock *first_block, MemBlock *secound_block) {
+MemBlock *StreamBlockList::MergeMemEntry(ProcessLocalData &local,
+                                         MemBlock *first_block,
+                                         MemBlock *secound_block) {
   CHECK_EQ(first_block->addr_offset + first_block->nbytes,
            secound_block->addr_offset);
   CHECK_EQ(first_block->is_free, secound_block->is_free);
@@ -108,27 +105,26 @@ StreamBlockList::MergeMemEntry(ProcessLocalData &local,
         first_block->addr_offset, first_block->nbytes);
   }
 
-  all_block_list_.erase(secound_block->iter_all_block_list);
+  local.all_block_list_.erase(secound_block->iter_all_block_list);
   stream_block_list_.erase(secound_block->iter_stream_block_list);
   memset(secound_block, 63, sizeof(MemBlock));
   local.shared_memory_->deallocate(secound_block);
 
   return first_block;
 }
-StreamFreeList::StreamFreeList(cudaStream_t cuda_stream,
+StreamFreeList::StreamFreeList(int device_id, cudaStream_t cuda_stream,
                                SharedMemory &shared_memory,
 
                                StreamBlockList &stream_block_list)
-    : current_stream_(cuda_stream),
+    : device_id(device_id), current_stream_(cuda_stream),
       stream_block_list_{&stream_block_list, shared_memory},
       free_block_list_{bip_multimap<size_t, shm_ptr<MemBlock>>(
                            shared_memory->get_segment_manager()),
                        bip_multimap<size_t, shm_ptr<MemBlock>>(
                            shared_memory->get_segment_manager())} {}
 
-MemBlock *StreamFreeList::PopBlock(ProcessLocalData &local,
-                                   bool is_small, size_t nbytes,
-                                   size_t find_optimal_retry) {
+MemBlock *StreamFreeList::PopBlock(ProcessLocalData &local, bool is_small,
+                                   size_t nbytes, size_t find_optimal_retry) {
   auto &free_list = free_block_list_[is_small];
   auto iter = free_list.lower_bound(nbytes);
   if (iter == free_list.cend()) {
@@ -165,16 +161,14 @@ MemBlock *StreamFreeList::PopBlock(ProcessLocalData &local,
   return block;
 }
 
-MemBlock *StreamFreeList::PopBlock(ProcessLocalData &local,
-                                   MemBlock *block) {
+MemBlock *StreamFreeList::PopBlock(ProcessLocalData &local, MemBlock *block) {
   CHECK(block->is_free);
   free_block_list_[block->is_small].erase(block->iter_free_block_list);
   block->is_free = false;
   return block;
 }
 
-MemBlock *StreamFreeList::PushBlock(ProcessLocalData &local,
-                                    MemBlock *block) {
+MemBlock *StreamFreeList::PushBlock(ProcessLocalData &local, MemBlock *block) {
   LOG_IF(INFO, VERBOSE_LEVEL >= 2) << "PushBlock " << *block;
   CHECK_GT(block->nbytes, 0) << block;
   auto &free_list = free_block_list_[block->is_small];
@@ -206,9 +200,8 @@ MemBlock *StreamFreeList::PushBlock(ProcessLocalData &local,
   return block;
 }
 
-MemBlock *
-StreamFreeList::MaybeMergeAdj(ProcessLocalData &local,
-                              MemBlock *entry) {
+MemBlock *StreamFreeList::MaybeMergeAdj(ProcessLocalData &local,
+                                        MemBlock *entry) {
   if (entry->unalloc_pages > 0) {
     return entry;
   }
@@ -240,8 +233,8 @@ StreamFreeList::MaybeMergeAdj(ProcessLocalData &local,
   return entry;
 }
 
-void StreamBlockList::DumpStreamBlockList(
-    ProcessLocalData &local, std::ostream &out) {
+void StreamBlockList::DumpStreamBlockList(ProcessLocalData &local,
+                                          std::ostream &out) {
   DumpMemBlockColumns(out);
   for (auto handle : stream_block_list_) {
     DumpMemBlock(local, out, handle.ptr(local.shared_memory_));
@@ -250,8 +243,8 @@ void StreamBlockList::DumpStreamBlockList(
 void StreamBlockList::DumpMemBlockColumns(std::ostream &out) {
   out << "start,len,next,prev,unalloc_pages,is_free,is_small" << "\n";
 }
-void StreamBlockList::DumpMemBlock(ProcessLocalData &local,
-                                   std::ostream &out, MemBlock *block) {
+void StreamBlockList::DumpMemBlock(ProcessLocalData &local, std::ostream &out,
+                                   MemBlock *block) {
   auto *prev = GetPrevEntry(local, block);
   auto *next = GetNextEntry(local, block);
   out << block->addr_offset << "," << block->nbytes << ","
@@ -260,9 +253,8 @@ void StreamBlockList::DumpMemBlock(ProcessLocalData &local,
       << block->is_free << "," << block->is_small << "\n";
 }
 
-void StreamFreeList::DumpFreeBlockList(
-    ProcessLocalData &local, bool is_small,
-    std::ostream &out) {
+void StreamFreeList::DumpFreeBlockList(ProcessLocalData &local, bool is_small,
+                                       std::ostream &out) {
   auto *stream_block_list_ptr = stream_block_list_.ptr(local.shared_memory_);
   stream_block_list_ptr->DumpMemBlockColumns(out);
   for (auto [nbytes, handle] : free_block_list_[is_small]) {
@@ -305,11 +297,11 @@ bool StreamBlockList::CheckState(ProcessLocalData &local,
     }
   }
   if (check_global_block_list) {
-    for (auto iter = all_block_list_.cbegin(); iter != all_block_list_.cend();
+    for (auto iter = local.all_block_list_.cbegin(); iter != local.all_block_list_.cend();
          ++iter) {
       auto *block = iter->ptr(local.shared_memory_);
       if (auto next_iter = std::next(block->iter_all_block_list);
-          next_iter != all_block_list_.cend()) {
+          next_iter != local.all_block_list_.cend()) {
         auto *next_block = next_iter->ptr(local.shared_memory_);
         if (next_block->addr_offset !=
             block->addr_offset + static_cast<ptrdiff_t>(block->nbytes)) {

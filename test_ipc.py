@@ -5,31 +5,7 @@ import torch
 import torch.multiprocessing as mp
 
 def use_shared_tensor():
-    page_conf = mpool.C_PagesPoolConf(
-        device_id = 0,
-        page_nbytes=32 * 1024 * 1024,
-        pool_nbytes=12 * 1024 * 1024 * 1024,
-        shm_name='test',
-        log_prefix='mpool ',
-        shm_nbytes=1 * 1024 * 1024 * 1024,
-    )
-    page_pool = mpool.C_PagesPool(page_conf)
-    caching_allocator_conf = mpool.C_CachingAllocatorConfig(
-        align_nbytes=512,
-        belong_name='test',
-        log_prefix='',
-        shm_name='test_caching_allocator',
-        shm_nbytes=1 * 1024 * 1024 * 1024,
-        small_block_nbytes=1024,
-        va_range_scale=1,
-    )
-    caching_allocator = mpool.C_CachingAllocator(page_pool, caching_allocator_conf)
-    block = caching_allocator.alloc(1024, 0, True)
-    caching_allocator.free(block)
-    mpool.override_pytorch_allocator(caching_allocator)
-    mpool.override_ipc(caching_allocator)
-    del caching_allocator
-    del page_pool
+    mpool.override_torch_allocator('test_ipc', 12 * 1024 * 1024 * 1024)
 
 def reset_shared_tensor():
     return
@@ -95,5 +71,5 @@ def main():
     
 
 if __name__ == "__main__":
-    mp.set_start_method('fork')
+    mp.set_start_method('spawn')
     main()

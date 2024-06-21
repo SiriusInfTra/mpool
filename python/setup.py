@@ -40,7 +40,7 @@ class PostInstallCommand:
             env['PYTHONPATH'] = os.path.abspath(self._install_lib)
         else:
             env['PYTHONPATH'] += ':' + os.path.abspath(self._install_lib)
-        subprocess.check_call(['pybind11-stubgen', 'mpool', '-o', self._install_lib], env=env)
+        subprocess.check_call(['pybind11-stubgen', 'mpool', '-o', self._install_lib, '--ignore-all-errors'], env=env)
     
 class PostInstallCommandInstall(install, PostInstallCommand):
 

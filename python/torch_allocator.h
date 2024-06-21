@@ -25,7 +25,7 @@ struct MemBlockExtraData {
 };
 class TorchAllocator : public c10::cuda::CUDACachingAllocator::CUDAAllocator {
 public:
-  PyCachingAllocator _caching_allocator;
+  std::vector<PyCachingAllocator> _caching_allocator;
   // PyTorch torch/csrc/CudaIPCTypes.h
   // unofficial limit on the number of recorded blocking interprocess events
   const constexpr static int64_t CUDA_IPC_MAXIMUM_EVENTS_TO_USE = 1000;
@@ -37,7 +37,7 @@ private:
   bool initialized_ = false;
 
 public:
-  TorchAllocator(PyCachingAllocator caching_allocator)
+  TorchAllocator(std::vector<PyCachingAllocator> caching_allocator)
       : _caching_allocator(std::move(caching_allocator)),
         event_usage_counter(0) {}
 
@@ -80,7 +80,7 @@ public:
   std::string name() override;
 
   c10::intrusive_ptr<c10::StorageImpl>
-  ReceiveHandle(shm_ptr<MemBlock> handle, size_t storage_size,
+  ReceiveHandle(int device_id, shm_ptr<MemBlock> handle, size_t storage_size,
                 MemBlockExtraData *extra_data);
   shm_ptr<MemBlock> SendHandle(c10::StorageImpl *storage);
 
@@ -98,7 +98,7 @@ public:
   }
 };
 
-void OverridePyTorchAllocator(PyCachingAllocator caching_allocator);
+void OverridePyTorchAllocator(std::vector<PyCachingAllocator> caching_allocator);
 void ResetPyTorchAllocator();
 
 TorchAllocator *GetTorchAllocator();

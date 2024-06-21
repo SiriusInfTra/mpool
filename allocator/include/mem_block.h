@@ -17,6 +17,7 @@ struct MemBlock {
   size_t nbytes;
   cudaStream_t stream;
   int32_t unalloc_pages;
+  int device_id;
   bool is_free;
   bool is_small;
   int32_t ref_count;

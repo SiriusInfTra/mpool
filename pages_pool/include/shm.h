@@ -1,12 +1,12 @@
 #pragma once
 
-#include "util.h"
 #include <boost/container/container_fwd.hpp>
 #include <boost/interprocess/creation_tags.hpp>
 #include <boost/interprocess/interprocess_fwd.hpp>
 #include <boost/interprocess/managed_shared_memory.hpp>
 #include <boost/interprocess/sync/interprocess_condition.hpp>
 #include <boost/unordered/unordered_map_fwd.hpp>
+#include <boost/interprocess/containers/string.hpp>
 #include <functional>
 #include <glog/logging.h>
 #include <memory>
@@ -21,6 +21,7 @@ template <class Mutex> using bip_lock = bip::scoped_lock<Mutex>;
 
 using bip_mutex = bip::interprocess_mutex;
 using bip_cond = bip::interprocess_condition;
+
 
 class SharedMemory {
 public:
@@ -153,5 +154,7 @@ template <typename Type>
 using bip_list =
     boost::container::list<Type,
                            bip::allocator<Type, bip_shm::segment_manager>>;
+
+using bip_string = bip::basic_string<char, std::char_traits<char>, bip::allocator<char, bip_shm::segment_manager>>;
 
 } // namespace mpool

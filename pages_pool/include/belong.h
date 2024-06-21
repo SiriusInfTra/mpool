@@ -7,6 +7,7 @@
 #include <string>
 
 #include <shm.h>
+#include <string_view>
 #include <util.h>
 
 #include <boost/interprocess/containers/vector.hpp>
@@ -17,7 +18,7 @@
 namespace mpool {
 struct BelongImpl {
   const index_t index;
-  const std::string name;
+  const bip_string name;
   std::atomic<num_t> pages_num;
 
   friend std::ostream &operator<<(std::ostream &out, const BelongImpl &impl) {
@@ -49,7 +50,9 @@ public:
 
   index_t GetIndex() const { return Get()->index; }
 
-  const std::string &GetName() const { return Get()->name; }
+  std::string_view GetName() const { 
+    return {Get()->name.c_str(), Get()->name.size()};
+  }
 
   bool operator==(const Belong &rhs) const {
     return this->handle_ == rhs.handle_;
@@ -76,7 +79,8 @@ private:
 
   BelongImpl *CreateBelong(size_t index, std::string name) {
     auto *belong_impl = shared_memory_->allocate(sizeof(BelongImpl));
-    return new (belong_impl) BelongImpl{index, name, 0};
+    bip_string shared_memory_string = {name.c_str(), name.length(), shared_memory_->get_segment_manager()};
+    return new (belong_impl) BelongImpl{index, shared_memory_string, 0};
   }
 
 public:
@@ -101,7 +105,7 @@ public:
     bip::scoped_lock lock{*mutex};
     for (auto handle : *registered_belongs) {
       auto *belong = handle.ptr(shared_memory_);
-      if (belong->name == name) {
+      if (std::string_view(belong->name.c_str(), belong->name.length()) == name) {
         return {belong, shared_memory_};
       }
     }

@@ -137,9 +137,8 @@ void MappingRegion::EnsureMemBlockWithMappings(
                 GetUnallocPages(prev_block->addr_offset, prev_block->nbytes))
           << prev_block;
     }
-  }
-  
-  LOG(INFO) << "EnsureMemBlockWithMappings: " << self_page_table_;
+  }  
+  // LOG(INFO) << "EnsureMemBlockWithMappings: " << self_page_table_;
 }
 
 int32_t MappingRegion::GetUnallocPages(ptrdiff_t addr_offset, size_t nbytes) {

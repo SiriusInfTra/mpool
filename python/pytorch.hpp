@@ -50,9 +50,8 @@ static py::object THPStorage_newSharedCuda(py::object _unused, py::args args) {
         << "Bad ipc event handle.";
     memcpy(&ipc_event_handle, s_ipc_event_handle.data(),
            sizeof(ipc_event_handle));
-
-    C10_CUDA_CHECK(cudaIpcOpenEventHandle(&event, ipc_event_handle));
-    C10_CUDA_CHECK(
+    /* ACC */CUDA_CALL(cudaIpcOpenEventHandle(&event, ipc_event_handle));
+    /* ACC */CUDA_CALL(
         cudaStreamWaitEvent(c10::cuda::getCurrentCUDAStream(device), event, 0));
   } else {
     event = nullptr;
@@ -61,7 +60,8 @@ static py::object THPStorage_newSharedCuda(py::object _unused, py::args args) {
   auto *extra_data = new MemBlockExtraData{
       .require_device_sync = true,
       .require_event_sync = event_sync_required,
-      .event = event
+      .event = event,
+      .event_count = 0
   };
   auto storage_impl = GetTorchAllocator()->ReceiveHandle(device, handle, storage_size, extra_data);
   py::object storage = py::module_::import("torch").attr("UntypedStorage")(0);
@@ -90,12 +90,12 @@ static py::tuple THPStorage_shareCuda(py::object *_self, py::args noargs) {
   bool event_sync_required = allocator->IncerEventUsage();
   if (event_sync_required) {
     TORCH_WARN_ONCE("event usage limit not reached.");
-    C10_CUDA_CHECK(cudaEventCreateWithFlags(&event, cudaEventDisableTiming |
+    /* ACC */CUDA_CALL(cudaEventCreateWithFlags(&event, cudaEventDisableTiming |
                                                       cudaEventInterprocess |
                                                       cudaEventBlockingSync));
-    C10_CUDA_CHECK(cudaEventRecord(
+    /* ACC */CUDA_CALL(cudaEventRecord(
         event, c10::cuda::getCurrentCUDAStream(storage->device().index())));
-    C10_CUDA_CHECK(cudaIpcGetEventHandle(&event_handle, event));
+    /* ACC */CUDA_CALL(cudaIpcGetEventHandle(&event_handle, event));
     s_ipc_event_handle = {reinterpret_cast<const char *>(&event_handle),
                                   sizeof(event_handle)};
   } else {

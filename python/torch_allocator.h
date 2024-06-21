@@ -22,16 +22,21 @@ struct MemBlockExtraData {
   bool require_event_sync;
   cudaEvent_t event;
   MemBlock *mem_block;
+
+  int event_count;
+  std::vector<c10::cuda::CUDAStream> stream_set;
 };
+
 class TorchAllocator : public c10::cuda::CUDACachingAllocator::CUDAAllocator {
 public:
   std::vector<PyCachingAllocator> _caching_allocator;
   // PyTorch torch/csrc/CudaIPCTypes.h
   // unofficial limit on the number of recorded blocking interprocess events
   const constexpr static int64_t CUDA_IPC_MAXIMUM_EVENTS_TO_USE = 1000;
-
+  std::unordered_multimap<cudaStream_t, std::pair<MemBlockExtraData*, cudaEvent_t>> _stream_events;
 private:
   std::unordered_map<std::byte *, MemBlock *> _mem_blocks;
+
   std::atomic<long> event_usage_counter;
   std::mutex lock_;
   bool initialized_ = false;
@@ -54,7 +59,7 @@ public:
   void cacheInfo(int dev_id, size_t *largestBlock) override;
   void *getBaseAllocation(void *ptr, size_t *size) override;
 
-  void recordStream(const c10::DataPtr &, at::cuda::CUDAStream stream) override;
+  void recordStream(const c10::DataPtr &data_ptr, at::cuda::CUDAStream stream) override;
 
   c10::cuda::CUDACachingAllocator::DeviceStats
   getDeviceStats(int device) override;
@@ -95,6 +100,21 @@ public:
 
   void DecerEventUsage() {
     event_usage_counter.fetch_sub(0, std::memory_order_relaxed);
+  }
+
+  void ProcessEvent();
+
+  void Dealloc(MemBlockExtraData *extra_data) {
+    if (extra_data->require_device_sync) {
+      at::cuda::stream_synchronize(c10::cuda::getCurrentCUDAStream(0));
+    }
+    if (extra_data->require_event_sync) {
+      /* ACC */CUDA_CALL(cudaEventDestroy(extra_data->event));
+      DecerEventUsage();
+    }
+    auto &caching_allocator = _caching_allocator.at(extra_data->mem_block->device_id);
+    caching_allocator->Free(extra_data->mem_block);
+    delete extra_data;
   }
 };
 

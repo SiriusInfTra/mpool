@@ -100,7 +100,7 @@ void MappingRegion::EnsureMemBlockWithMappings(
     auto *dev_ptr = base_ptr_ + min_va_i * mem_block_nbytes;
     size_t nbytes = (max_va_i - min_va_i + 1) * mem_block_nbytes;
     CUmemAccessDesc acc_desc = {
-        .location = {.type = CU_MEM_LOCATION_TYPE_DEVICE, .id = 0},
+        .location = {.type = CU_MEM_LOCATION_TYPE_DEVICE, .id = page_pool_.config.device_id},
         .flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE};
     CU_CALL(cuMemSetAccess(reinterpret_cast<CUdeviceptr>(dev_ptr), nbytes,
                            &acc_desc, 1));

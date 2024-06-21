@@ -118,6 +118,7 @@ CUDAIpcTransfer::CUDAIpcTransfer(SharedMemory &shared_memory,
     : server_sock_name_(conf.shm_name + "__sock_ipc_server"),
       client_sock_name_(conf.shm_name + "__sock_ipc_client"),
       message_queue_(shared_memory), phy_pages_ref_(phy_pages_ref),
+      device_id_(conf.device_id),
       pages_num_(conf.pool_nbytes / conf.page_nbytes),
       page_nbytes_(conf.page_nbytes) {
   shm_belong_list_ =
@@ -138,7 +139,7 @@ void CUDAIpcTransfer::InitMaster(Belong kFree) {
   CUmemAllocationProp prop = {
       .type = CU_MEM_ALLOCATION_TYPE_PINNED,
       .requestedHandleTypes = CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR,
-      .location = {.type = CU_MEM_LOCATION_TYPE_DEVICE, .id = 0}};
+      .location = {.type = CU_MEM_LOCATION_TYPE_DEVICE, .id = device_id_}};
   CUmemGenericAllocationHandle cu_handle;
   auto start = std::chrono::steady_clock::now();
   for (index_t index = 0; index < pages_num_; ++index) {

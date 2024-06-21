@@ -84,16 +84,25 @@ static py::tuple THPStorage_shareCuda(py::object *_self, py::args noargs) {
 
   cudaEvent_t event;
   cudaIpcEventHandle_t event_handle;
-  // FIXME cuda have a limit on cudaEventInterprocess
-  // TODO Destroy cuda event
-  C10_CUDA_CHECK(cudaEventCreateWithFlags(&event, cudaEventDisableTiming |
+  std::string s_ipc_event_handle;
+  bool event_sync_required = allocator->IncerEventUsage();
+  if (event_sync_required) {
+    TORCH_WARN_ONCE("event usage limit not reached.");
+    C10_CUDA_CHECK(cudaEventCreateWithFlags(&event, cudaEventDisableTiming |
                                                       cudaEventInterprocess |
                                                       cudaEventBlockingSync));
-  C10_CUDA_CHECK(cudaEventRecord(
-      event, c10::cuda::getCurrentCUDAStream(storage->device().index())));
-  C10_CUDA_CHECK(cudaIpcGetEventHandle(&event_handle, event));
-  std::string s_ipc_event_handle(reinterpret_cast<const char *>(&event_handle),
-                                 sizeof(event_handle));
+    C10_CUDA_CHECK(cudaEventRecord(
+        event, c10::cuda::getCurrentCUDAStream(storage->device().index())));
+    C10_CUDA_CHECK(cudaIpcGetEventHandle(&event_handle, event));
+    s_ipc_event_handle = {reinterpret_cast<const char *>(&event_handle),
+                                  sizeof(event_handle)};
+  } else {
+    TORCH_WARN("event usage limit reached.");
+    auto stream = c10::cuda::getCurrentCUDAStream(storage->device().index());
+    at::cuda::stream_synchronize(stream);
+    event = nullptr;
+  }
+
   py::tuple tuple(8);
   tuple[0] = static_cast<long>(storage->device().index()); // storage_device
   tuple[1] = static_cast<bip_shm::handle_t>(_handle);      // storage_handle
@@ -102,7 +111,7 @@ static py::tuple THPStorage_shareCuda(py::object *_self, py::args noargs) {
   tuple[4] = 0;                             // ref_counter_handle
   tuple[5] = 0;                             // ref_counter_offset
   tuple[6] = py::bytes(s_ipc_event_handle); // event_handle
-  tuple[7] = true;                         // event_sync_required
+  tuple[7] = event_sync_required;                         // event_sync_required
   return tuple;
   END_HANDLE_TH_ERRORS_PYBIND
 }

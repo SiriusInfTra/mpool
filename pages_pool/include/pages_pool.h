@@ -1,16 +1,16 @@
 #pragma once
-#include "cuda_handle.h"
+
 #include <boost/interprocess/sync/scoped_lock.hpp>
 #include <memory>
 #include <string>
 #include <vector>
-#include <memory>
 
 #include <util.h>
 #include <shm.h>
 #include <pages.h>
 #include <belong.h>
 #include <pages_list.h>
+#include <cuda_handle.h>
 
 #include <boost/interprocess/interprocess_fwd.hpp>
 #include <boost/interprocess/managed_shared_memory.hpp>

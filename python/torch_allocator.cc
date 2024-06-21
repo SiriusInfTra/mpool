@@ -66,6 +66,7 @@ void BlockDeletePtr(void *_extra_data) {
   }
   if (extra_data->require_event_sync) {
     C10_CUDA_CHECK(cudaEventDestroy(extra_data->event));
+    torch_allocator_->DecerEventUsage();
   }
   torch_allocator_->_caching_allocator->Free(extra_data->mem_block);
   delete extra_data;

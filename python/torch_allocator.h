@@ -1,18 +1,19 @@
 #pragma once
 
+#include <atomic>
 #include <cstddef>
 #include <unordered_map>
 
 #include <caching_allocator.h>
 #include <mem_block.h>
-#include <shm.h>
 #include <py_wrap.hpp>
+#include <shm.h>
 
+#include <ATen/core/TensorBody.h>
 #include <c10/core/Allocator.h>
 #include <c10/core/Storage.h>
 #include <c10/cuda/CUDACachingAllocator.h>
 #include <c10/cuda/CUDAStream.h>
-#include <ATen/core/TensorBody.h>
 
 namespace mpool {
 
@@ -25,15 +26,20 @@ struct MemBlockExtraData {
 class TorchAllocator : public c10::cuda::CUDACachingAllocator::CUDAAllocator {
 public:
   PyCachingAllocator _caching_allocator;
+  // PyTorch torch/csrc/CudaIPCTypes.h
+  // unofficial limit on the number of recorded blocking interprocess events
+  const constexpr static int64_t CUDA_IPC_MAXIMUM_EVENTS_TO_USE = 1000;
 
 private:
   std::unordered_map<std::byte *, MemBlock *> _mem_blocks;
+  std::atomic<long> event_usage_counter;
   std::mutex lock_;
   bool initialized_ = false;
 
 public:
   TorchAllocator(PyCachingAllocator caching_allocator)
-      : _caching_allocator(std::move(caching_allocator)) {}
+      : _caching_allocator(std::move(caching_allocator)),
+        event_usage_counter(0) {}
 
   c10::DataPtr allocate(size_t nbytes) const override;
   c10::DeleterFnPtr raw_deleter() const override;
@@ -73,8 +79,23 @@ public:
 
   std::string name() override;
 
-  c10::intrusive_ptr<c10::StorageImpl> ReceiveHandle(shm_ptr<MemBlock> handle, size_t storage_size, MemBlockExtraData *extra_data);
+  c10::intrusive_ptr<c10::StorageImpl>
+  ReceiveHandle(shm_ptr<MemBlock> handle, size_t storage_size,
+                MemBlockExtraData *extra_data);
   shm_ptr<MemBlock> SendHandle(c10::StorageImpl *storage);
+
+  bool IncerEventUsage() {
+    if (event_usage_counter.load(std::memory_order_relaxed) >=
+        CUDA_IPC_MAXIMUM_EVENTS_TO_USE) {
+      return false;
+    }
+    event_usage_counter.fetch_add(1, std::memory_order_relaxed);
+    return true;
+  }
+
+  void DecerEventUsage() {
+    event_usage_counter.fetch_sub(0, std::memory_order_relaxed);
+  }
 };
 
 void OverridePyTorchAllocator(PyCachingAllocator caching_allocator);

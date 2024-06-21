@@ -92,7 +92,8 @@ private:
   std::vector<PhyPage> &phy_pages_ref_;
   shm_ptr<BelongImpl> *shm_belong_list_;
   std::thread export_handle_thread_;
-
+  
+  const int device_id_;
   const size_t pages_num_;
   const size_t page_nbytes_;
   const std::string log_prefix_;

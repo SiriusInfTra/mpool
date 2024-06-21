@@ -6,6 +6,7 @@ import torch.multiprocessing as mp
 
 def use_shared_tensor():
     page_conf = mpool.C_PagesPoolConf(
+        device_id = 0,
         page_nbytes=32 * 1024 * 1024,
         pool_nbytes=12 * 1024 * 1024 * 1024,
         shm_name='test',

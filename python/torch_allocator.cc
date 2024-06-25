@@ -22,8 +22,23 @@
 #include <torch/csrc/Storage.h>
 #include <torch/csrc/utils.h>
 #include <utility>
-
+#include <chrono>
 namespace mpool {
+
+class Recorder {
+private:
+  std::chrono::steady_clock::time_point t0;
+  std::string name;
+public:
+  Recorder(std::string name): t0(std::chrono::steady_clock::now()), name(std::move(name)) {}
+  ~Recorder() {
+    auto t1 = std::chrono::steady_clock::now();
+    auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+    if (dur > 20) {
+      LOG(WARNING) << name << " cost " << dur << "ms.";
+    }
+  }
+};
 
 static std::shared_ptr<TorchAllocator> torch_allocator_ = nullptr;
 
@@ -61,6 +76,7 @@ void RawDeletePtr(void *ptr) {
 void NullDeletePtr(void *null) {}
 
 void BlockDeletePtr(void *_extra_data) {
+  Recorder recorder("BlockDeletePtr");
   TORCH_CHECK_NOTNULL(torch_allocator_);
   TORCH_CHECK_NOTNULL(_extra_data);
   auto *extra_data = reinterpret_cast<MemBlockExtraData *>(_extra_data);
@@ -69,6 +85,7 @@ void BlockDeletePtr(void *_extra_data) {
     AT_ASSERT(extra_data->stream_set.empty());
     c10::DeviceGuard device_guard{c10::Device{c10::kCUDA, static_cast<c10::DeviceIndex>(extra_data->mem_block->device_id)}};
     cudaEvent_t event;
+    // TODO EventPool
     /* ACC */CUDA_CALL(cudaEventCreateWithFlags(&event, cudaEventDisableTiming));
     for (auto &&stream : streams) {
       /* ACC */CUDA_CALL(cudaEventRecord(event, stream.stream()));
@@ -81,6 +98,7 @@ void BlockDeletePtr(void *_extra_data) {
 }
 
 c10::DataPtr TorchAllocator::allocate(size_t nbytes) const {
+  Recorder recorder("allocate");
   auto cur_device = at::cuda::current_device();
   cudaStream_t stream = c10::cuda::getCurrentCUDAStream(cur_device);
   c10::DataPtr data_ptr;
@@ -93,10 +111,8 @@ c10::DataPtr TorchAllocator::allocate(size_t nbytes) const {
     auto *block = caching_allocator->Alloc(nbytes, stream);
     auto *addr = caching_allocator->GetBasePtr() + block->addr_offset;
     auto *extra_data = new MemBlockExtraData{
-      .require_device_sync = false,
-      .require_event_sync = false,
-      .event = nullptr,
       .mem_block = block,
+      .from_sharing = false,
       .event_count = 0
     };
     data_ptr = {addr, extra_data, BlockDeletePtr,
@@ -171,12 +187,10 @@ void TorchAllocator::cacheInfo(int dev_id, size_t *largestBlock) {
 
 void TorchAllocator::recordStream(const c10::DataPtr &data_ptr, at::cuda::CUDAStream stream) {
   auto *extra_data = reinterpret_cast<MemBlockExtraData*>(data_ptr.get_context());
-  if (extra_data->mem_block->stream == stream.stream()) {
+  if (extra_data->mem_block->stream == stream.stream() || extra_data->from_sharing) {
     return;
   }
   extra_data->event_count++;
-  // TODO EventPool
-  // TODO CHECK SHARED
 }
 
 void TorchAllocator::ProcessEvent() {

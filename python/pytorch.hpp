@@ -58,6 +58,7 @@ static py::object THPStorage_newSharedCuda(py::object _unused, py::args args) {
   }
   at::cuda::CUDAGuard device_guard(device);
   auto *extra_data = new MemBlockExtraData{
+      .from_sharing = true,
       .require_device_sync = true,
       .require_event_sync = event_sync_required,
       .event = event,

@@ -3,12 +3,12 @@
 
 namespace mpool {
 void CUDAIpcTransfer::BindServer(int &socket_fd) {
-  LOG(INFO) << "BIND SERVER";
+  LOG_IF(INFO, VERBOSE_LEVEL >= 2) << log_prefix_ << "BIND SERVER.";
   struct sockaddr_un server_addr;
 
   // create socket and bind
   CHECK_GE(socket_fd = socket(AF_UNIX, SOCK_DGRAM, 0), 0)
-      << "[mempool] Create socket failed.";
+      << log_prefix_ << "Create socket failed.";
 
   bzero(&server_addr, sizeof(server_addr));
   server_addr.sun_family = AF_UNIX;
@@ -20,17 +20,17 @@ void CUDAIpcTransfer::BindServer(int &socket_fd) {
   CHECK_EQ(
       bind(socket_fd, (struct sockaddr *)&server_addr, SUN_LEN(&server_addr)),
       0)
-      << "[mempool] Bind error.";
+      << log_prefix_ << "Bind error.";
 }
 void CUDAIpcTransfer::UnlinkServer(int socket_fd) {
   unlink(server_sock_name_.c_str());
   close(socket_fd);
 }
 void CUDAIpcTransfer::BindClient(int &socket_fd) {
-  LOG(INFO) << "BIND CLIENT";
+  LOG_IF(INFO, VERBOSE_LEVEL >= 2) << log_prefix_ << "BIND CLIENT.";
   struct sockaddr_un client_addr;
   CHECK_GE(socket_fd = socket(AF_UNIX, SOCK_DGRAM, 0), 0)
-      << "[mempool] Create socket fail.";
+      << log_prefix_ << "Create socket fail.";
 
   bzero(&client_addr, sizeof(client_addr));
   client_addr.sun_family = AF_UNIX;
@@ -41,14 +41,14 @@ void CUDAIpcTransfer::BindClient(int &socket_fd) {
   CHECK_EQ(
       bind(socket_fd, (struct sockaddr *)&client_addr, SUN_LEN(&client_addr)),
       0)
-      << "[mempool] Bind fail.";
+      << log_prefix_ << "Bind fail.";
 }
 void CUDAIpcTransfer::UnlinkClient(int socket_fd) {
   unlink(client_sock_name_.c_str());
   close(socket_fd);
 }
 void CUDAIpcTransfer::Receive(int fd_list[], size_t len, int socket_fd) {
-  LOG(INFO) << "RECEIVE";
+  LOG_IF(INFO, VERBOSE_LEVEL >= 1) << log_prefix_ <<  "RECEIVE.";
   struct msghdr msg = {0};
   struct iovec iov[1];
 
@@ -67,19 +67,19 @@ void CUDAIpcTransfer::Receive(int fd_list[], size_t len, int socket_fd) {
   msg.msg_iov = iov;
   msg.msg_iovlen = 1;
 
-  CHECK_GE(n = recvmsg(socket_fd, &msg, 0), 0) << "[mempool] Recv msg fail.";
+  CHECK_GE(n = recvmsg(socket_fd, &msg, 0), 0) << log_prefix_ << "Recv msg fail.";
 
   CHECK((cmptr = CMSG_FIRSTHDR(&msg)) != nullptr)
-      << "[mempool] Bad cmsg received.";
+      << log_prefix_ << "Bad cmsg received.";
   CHECK_EQ(cmptr->cmsg_len, CMSG_LEN(sizeof(int) * len))
-      << "[mempool] Bad cmsg received.";
+      << log_prefix_ << "cmsg received.";
 
   memcpy(fd_list, CMSG_DATA(cmptr), sizeof(int) * len);
-  CHECK_EQ(cmptr->cmsg_level, SOL_SOCKET) << "[mempool] Bad cmsg received.";
-  CHECK_EQ(cmptr->cmsg_type, SCM_RIGHTS) << "[mempool] Bad cmsg received.";
+  CHECK_EQ(cmptr->cmsg_level, SOL_SOCKET) << log_prefix_ << "Bad cmsg received.";
+  CHECK_EQ(cmptr->cmsg_type, SCM_RIGHTS) << log_prefix_ << "Bad cmsg received.";
 }
 void CUDAIpcTransfer::Send(int fd_list[], size_t len, int socket_fd) {
-  LOG(INFO) << "SEND";
+  LOG_IF(INFO, VERBOSE_LEVEL >= 2) << log_prefix_ << "SEND";
   struct msghdr msg;
   struct iovec iov[1];
 
@@ -110,7 +110,7 @@ void CUDAIpcTransfer::Send(int fd_list[], size_t len, int socket_fd) {
   msg.msg_iovlen = 1;
 
   ssize_t send_result = sendmsg(socket_fd, &msg, 0);
-  CHECK_GE(send_result, 0) << "[mempool] Send msg fail.";
+  CHECK_GE(send_result, 0) << log_prefix_ << "Send msg fail.";
 }
 CUDAIpcTransfer::CUDAIpcTransfer(SharedMemory &shared_memory,
                                  std::vector<PhyPage> &phy_pages_ref,
@@ -231,7 +231,7 @@ void CUDAIpcTransfer::Run() {
   }
   UnlinkServer(socket_fd);
   message_queue_.RecordEvent(Event::kMasterChance);
-  LOG(INFO) << "[mempool] EXIT!";
+  LOG(INFO) << log_prefix_ << "EXIT!";
 }
 
 MessageQueue::MessageQueue(SharedMemory &shared_memory) : is_close(false) {
@@ -242,29 +242,29 @@ MessageQueue::MessageQueue(SharedMemory &shared_memory) : is_close(false) {
 }
 bool MessageQueue::WaitEvent(Event event, bool interruptable) {
   bip::scoped_lock lock{*mutex};
-  LOG(INFO) << "WaitEvent " << event << ".";
-  LOG(INFO) << "CURRENT LIST: " << *message_queue_; 
+  LOG_IF(INFO, VERBOSE_LEVEL >= 3) << "WaitEvent " << event << ".";
+  LOG_IF(INFO, VERBOSE_LEVEL >= 3) << "CURRENT LIST: " << *message_queue_; 
   cond->wait(lock, [&] {
     return (interruptable && is_close) ||
            (!message_queue_->empty() && message_queue_->front() == event);
   });
-  LOG(INFO) << "WaitEvent OK " << event << "." ;
+  LOG_IF(INFO, VERBOSE_LEVEL >= 3) << "WaitEvent OK " << event << "." ;
   if (message_queue_->front() == event) {
     message_queue_->pop_front();
     cond->notify_all();
-    LOG(INFO) << "CURRENT LIST: " << *message_queue_;
+    LOG_IF(INFO, VERBOSE_LEVEL >= 3) << "CURRENT LIST: " << *message_queue_;
     return true;
   } 
-  LOG(INFO) << "CURRENT LIST: " << *message_queue_;
+  LOG_IF(INFO, VERBOSE_LEVEL >= 3) << "CURRENT LIST: " << *message_queue_;
   return false;
 
 }
 void MessageQueue::RecordEvent(Event event) {
   bip::scoped_lock lock{*mutex};
-  LOG(INFO) << "RecordEvent " << event << "."; 
+  LOG_IF(INFO, VERBOSE_LEVEL >= 3) << "RecordEvent " << event << "."; 
   message_queue_->push_back(event);
   cond->notify_all();
-  LOG(INFO) << "CURRENT LIST: " << *message_queue_;
+  LOG_IF(INFO, VERBOSE_LEVEL >= 3) << "CURRENT LIST: " << *message_queue_;
 }
 void MessageQueue::Close() {
   is_close = true;

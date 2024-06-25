@@ -18,10 +18,13 @@
 namespace mpool {
 
 struct MemBlockExtraData {
+  MemBlock *mem_block;
+
+  bool from_sharing;
   bool require_device_sync;
   bool require_event_sync;
   cudaEvent_t event;
-  MemBlock *mem_block;
+  
 
   int event_count;
   std::vector<c10::cuda::CUDAStream> stream_set;

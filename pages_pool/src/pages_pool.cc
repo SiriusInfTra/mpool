@@ -107,7 +107,7 @@ void PagesPool::FreePages(const std::vector<index_t> &pages, Belong blg,
 }
 
 PagesPool::~PagesPool() {
-  LOG(INFO) << "Release PagesPool";
+  LOG(INFO) << config.log_prefix << "Release PagesPool";
 }
 
 BelongRegistry &PagesPool::GetBelongRegistry() { return belong_registery_; }

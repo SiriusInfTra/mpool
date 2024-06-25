@@ -3,6 +3,7 @@
 #include "pages.h"
 #include <atomic>
 #include <cstddef>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -32,10 +33,11 @@ private:
   std::vector<const PhyPage *> self_page_table_;
   bip_vector<index_t> &shared_global_mappings_;
   PagesPool &page_pool_;
+  std::function<void()> ReportOOM;
 
 public:
   MappingRegion(SharedMemory &shared_memory, PagesPool &page_pool,
-                Belong belong, std::string log_prefix, size_t va_range_scale);
+                Belong belong, std::string log_prefix, size_t va_range_scale, std::function<void()> ReportOOM);
 
   index_t GetVirtualIndex(ptrdiff_t addr_offset) const;
 

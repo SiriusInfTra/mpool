@@ -47,6 +47,10 @@ public:
   void DumpStreamBlockList(ProcessLocalData &local, std::ostream &out = std::cout);
 
   bool CheckState(ProcessLocalData &local, bool check_global_block_list = false);
+
+  size_t Size() const {
+    return stream_block_list_.size();
+  }
 };
 
 class StreamFreeList {

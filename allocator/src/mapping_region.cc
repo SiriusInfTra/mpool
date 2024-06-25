@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <boost/interprocess/containers/vector.hpp>
 #include <cuda.h>
+#include <functional>
 #include <glog/logging.h>
 #include <limits>
 #include <mapping_region.h>
@@ -11,7 +12,7 @@ namespace mpool {
 
 MappingRegion::MappingRegion(SharedMemory &shared_memory, PagesPool &page_pool,
                              Belong belong, std::string log_prefix,
-                             size_t va_range_scale)
+                             size_t va_range_scale, std::function<void()> ReportOOM)
     : log_prefix(log_prefix), mem_block_nbytes(page_pool.config.page_nbytes),
       mem_block_num(page_pool.config.pool_nbytes /
                     page_pool.config.page_nbytes),
@@ -21,7 +22,7 @@ MappingRegion::MappingRegion(SharedMemory &shared_memory, PagesPool &page_pool,
           *shared_memory->find_or_construct<bip_vector<index_t>>(
               "ME_shared_global_mappings")(
               shared_memory->get_segment_manager())),
-      page_pool_(page_pool) {
+      page_pool_(page_pool), ReportOOM(ReportOOM) {
   CU_CALL(cuMemAddressReserve(reinterpret_cast<CUdeviceptr *>(&base_ptr_),
                               mem_block_nbytes * mem_block_num * va_range_scale,
                               mem_block_nbytes, 0, 0));
@@ -37,8 +38,13 @@ index_t MappingRegion::GetVirtualIndex(ptrdiff_t addr_offset) const {
 
 void MappingRegion::EnsureMemBlockWithMappings(
     MemBlock *block, bip_list<shm_ptr<MemBlock>> &all_block_list) {
-  CHECK_LE(block->addr_offset + block->nbytes,
-           mem_block_nbytes * mem_block_num * va_range_scale);
+  if (block->addr_offset + block->nbytes > mem_block_nbytes * mem_block_num * va_range_scale) {
+    LOG(WARNING) << "OOM: Cannot reserve VA for block: " << block
+                 << ", addr_offset = " << block->addr_offset
+                 << ", nbytes = " << block->nbytes << ".";
+    ReportOOM();
+    return;
+  }
 
   index_t va_range_l_i = PAGE_INDEX_L(block);
   index_t va_range_r_i = PAGE_INDEX_R(block);
@@ -54,8 +60,7 @@ void MappingRegion::EnsureMemBlockWithMappings(
         missing_va_mapping_i.push_back(index);
       }
     }
-    CHECK_EQ(block->unalloc_pages, missing_va_mapping_i.size())
-        << "Mismatch unalloc pages";
+    CHECK_EQ(block->unalloc_pages, missing_va_mapping_i.size()) << "Mismatch unalloc pages: " << block << ".";
   }
 
   /* 2. alloc physical pages if necessary */
@@ -66,7 +71,17 @@ void MappingRegion::EnsureMemBlockWithMappings(
       new_allocated_pages_index =
           page_pool_.AllocDisPages(belong, missing_va_mapping_i.size(), lock);
     }
-    CHECK_EQ(new_allocated_pages_index.size(), missing_va_mapping_i.size());
+    if (new_allocated_pages_index.size() < missing_va_mapping_i.size()) {
+      LOG(WARNING) << "OOM: Cannot allocate enough pages for block: " << block
+              << ", unalloc_pages = " << block->unalloc_pages
+              << ", allocated_pages = " << missing_va_mapping_i.size() << ".";
+      {
+        auto lock = page_pool_.Lock();
+        page_pool_.FreePages(new_allocated_pages_index, belong, lock);
+      }
+      ReportOOM();
+      return;
+    }
     for (index_t k = 0; k < new_allocated_pages_index.size(); ++k) {
       shared_global_mappings_[missing_va_mapping_i[k]] = new_allocated_pages_index[k];
     }

@@ -25,7 +25,6 @@ struct CachingAllocatorConfig {
   size_t align_nbytes;
 };
 
-
 class CachingAllocator {
 public:
   const Belong belong;
@@ -41,7 +40,6 @@ private:
   MappingRegion mapping_region_;
   bip_list<shm_ptr<MemBlock>> &all_block_list_;
   ProcessLocalData process_local_;
-
 
   StreamContext &global_stream_context_;
 
@@ -78,7 +76,9 @@ public:
 
   void EmptyCache();
 
+  void ReportOOM();
 
+  void DumpState();
 };
 
 

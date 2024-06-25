@@ -1,7 +1,6 @@
 #pragma once 
 
-#include "pages.h"
-#include <atomic>
+
 #include <cstddef>
 #include <functional>
 #include <string>
@@ -9,6 +8,7 @@
 
 #include <shm.h>
 #include <util.h>
+#include <pages.h>
 #include <belong.h>
 #include <pages_pool.h>
 #include <mem_block.h>
@@ -16,6 +16,12 @@
 #define PAGE_INDEX_L(block) ((block)->addr_offset / mem_block_nbytes)
 #define PAGE_INDEX_R(block) ((((block)->addr_offset + (block)->nbytes - 1) / mem_block_nbytes) + 1)
 
+
+enum class OOMReason {
+  NO_PHYSICAL_PAGES, NO_VIRTUAL_SPACE, NO_MEMORY_BLOCK
+};
+
+using OOMObserver = std::function<void(int device_id, cudaStream_t stream, OOMReason reason)>;
 
 namespace mpool {
 
@@ -33,11 +39,11 @@ private:
   std::vector<const PhyPage *> self_page_table_;
   bip_vector<index_t> &shared_global_mappings_;
   PagesPool &page_pool_;
-  std::function<void()> ReportOOM;
+  std::function<void(int device_id, cudaStream_t cuda_stream, OOMReason reason)>  ReportOOM;
 
 public:
   MappingRegion(SharedMemory &shared_memory, PagesPool &page_pool,
-                Belong belong, std::string log_prefix, size_t va_range_scale, std::function<void()> ReportOOM);
+                Belong belong, std::string log_prefix, size_t va_range_scale, std::function<void(int device_id, cudaStream_t cuda_stream, OOMReason reason)> ReportOOM);
 
   index_t GetVirtualIndex(ptrdiff_t addr_offset) const;
 

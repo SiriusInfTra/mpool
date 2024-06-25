@@ -215,6 +215,7 @@ void TorchAllocator::ProcessEvent() {
 
 c10::cuda::CUDACachingAllocator::DeviceStats
 TorchAllocator::getDeviceStats(int device) {
+  
   TORCH_CHECK_NOT_IMPLEMENTED(false, "getDeviceStats");
   throw std::runtime_error("NOT IMPL");
 }

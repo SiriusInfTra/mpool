@@ -25,17 +25,21 @@ struct CachingAllocatorConfig {
   size_t align_nbytes;
 };
 
+
+
 class CachingAllocator {
 public:
   const Belong belong;
   const CachingAllocatorConfig config;
+  PagesPool &page_pool;
+
 
   static bool RemoveShm(const CachingAllocatorConfig &config) {
     return bip::shared_memory_object::remove(config.shm_name.c_str());
   }
 
 private:
-  PagesPool &page_pool_;
+
   SharedMemory &shared_memory_;
   MappingRegion mapping_region_;
   bip_list<shm_ptr<MemBlock>> &all_block_list_;
@@ -46,11 +50,15 @@ private:
   bip_unordered_map<cudaStream_t, shm_ptr<StreamContext>>
       &stream_context_map_;
 
+  std::vector<OOMObserver*> oom_observers_;
+
   StreamContext &GetStreamContext(cudaStream_t cuda_stream, const bip::scoped_lock<bip_mutex> &lock);
 
   MemBlock *AllocWithContext(size_t nbytes, StreamContext &stream_context, const bip::scoped_lock<bip_mutex> &lock);
 
   bool CheckStateInternal(const bip::scoped_lock<bip_mutex> &lock);
+
+  
 public:
   CachingAllocator(SharedMemory &shared_memory, PagesPool &page_pool,
                    CachingAllocatorConfig config, bool first_init);
@@ -76,7 +84,21 @@ public:
 
   void EmptyCache();
 
-  void ReportOOM();
+  size_t GetDeviceFreeNbytes() const {
+    size_t free_nbytes = page_pool.GetBelongRegistry().GetFreeBelong().GetPagesNum() * page_pool.config.page_nbytes;
+    free_nbytes += belong.GetPagesNum() * page_pool.config.page_nbytes - belong.GetAllocatedNbytes();
+    return free_nbytes;
+  }
+
+  void AddOOMObserver(OOMObserver *observer) {
+    oom_observers_.push_back(observer);
+  }
+
+  void RemoveOOMObserver(OOMObserver *observer) {
+    oom_observers_.erase(std::remove(oom_observers_.begin(), oom_observers_.end(), observer));
+  }
+
+  void ReportOOM(int device_id, cudaStream_t cuda_stream, OOMReason reason);
 
   void DumpState();
 };

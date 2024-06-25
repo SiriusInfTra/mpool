@@ -12,7 +12,7 @@ namespace mpool {
 
 MappingRegion::MappingRegion(SharedMemory &shared_memory, PagesPool &page_pool,
                              Belong belong, std::string log_prefix,
-                             size_t va_range_scale, std::function<void()> ReportOOM)
+                             size_t va_range_scale, std::function<void(int device_id, cudaStream_t cuda_stream, OOMReason reason)>  ReportOOM)
     : log_prefix(log_prefix), mem_block_nbytes(page_pool.config.page_nbytes),
       mem_block_num(page_pool.config.pool_nbytes /
                     page_pool.config.page_nbytes),
@@ -42,7 +42,7 @@ void MappingRegion::EnsureMemBlockWithMappings(
     LOG(WARNING) << "OOM: Cannot reserve VA for block: " << block
                  << ", addr_offset = " << block->addr_offset
                  << ", nbytes = " << block->nbytes << ".";
-    ReportOOM();
+    ReportOOM(page_pool_.config.device_id, block->stream, OOMReason::NO_VIRTUAL_SPACE);
     return;
   }
 
@@ -79,7 +79,7 @@ void MappingRegion::EnsureMemBlockWithMappings(
         auto lock = page_pool_.Lock();
         page_pool_.FreePages(new_allocated_pages_index, belong, lock);
       }
-      ReportOOM();
+      ReportOOM(page_pool_.config.device_id, block->stream, OOMReason::NO_PHYSICAL_PAGES);
       return;
     }
     for (index_t k = 0; k < new_allocated_pages_index.size(); ++k) {

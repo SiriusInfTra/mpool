@@ -37,7 +37,7 @@ PagesPool::PagesPool(SharedMemory &shared_memory, PagesPoolConf conf,
       handle_transfer_(shared_memory_, phy_pages, config),
       belong_registery_(shared_memory_) {
   CU_CALL(cuInit(0));
-  belong_registery_.Init();
+  belong_registery_.Init(config.pool_nbytes / config.page_nbytes);
   if (first_init) {
     LOG(INFO) << config.log_prefix << "Init PagesPool[Master].";
     handle_transfer_.InitMaster(belong_registery_.GetFreeBelong());
@@ -66,6 +66,7 @@ index_t PagesPool::AllocConPages(Belong blg, num_t num_req,
     *phy_page.belong = blg;
   }
   blg.Get()->pages_num.fetch_add(num_req, std::memory_order_relaxed);
+  belong_registery_.GetFreeBelong().Get()->pages_num.fetch_sub(num_req, std::memory_order_relaxed);
   return index_begin;
 }
 std::vector<index_t>
@@ -89,6 +90,7 @@ PagesPool::AllocDisPages(Belong blg, num_t num_req,
     ret.push_back(index);
   }
   blg.Get()->pages_num.fetch_add(ret.size(), std::memory_order_relaxed);
+  belong_registery_.GetFreeBelong().Get()->pages_num.fetch_sub(ret.size(), std::memory_order_relaxed);
   return ret;
 }
 
@@ -104,6 +106,7 @@ void PagesPool::FreePages(const std::vector<index_t> &pages, Belong blg,
     free_list_.ReleasePages(index, 1);
   }
   blg.Get()->pages_num.fetch_sub(pages.size(), std::memory_order_relaxed);
+  belong_registery_.GetFreeBelong().Get()->pages_num.fetch_add(pages.size(), std::memory_order_relaxed);
 }
 
 PagesPool::~PagesPool() {

@@ -1,3 +1,4 @@
+#include "mapping_region.h"
 #include <array>
 #include <caching_allocator.h>
 #include <cstddef>
@@ -22,10 +23,10 @@ CachingAllocator::CachingAllocator(SharedMemory &shared_memory,
                                    bool first_init)
     : belong(
           page_pool.GetBelongRegistry().GetOrCreateBelong(config.belong_name)),
-      config(std::move(config)), page_pool_(page_pool),
+      config(std::move(config)), page_pool(page_pool),
       shared_memory_(shared_memory),
       mapping_region_(shared_memory_, page_pool, belong,
-                      this->config.log_prefix, this->config.va_range_scale, [&]{ ReportOOM(); }),
+                      this->config.log_prefix, this->config.va_range_scale, [&](int device_id, cudaStream_t cuda_stream, OOMReason reason){ ReportOOM(device_id, cuda_stream, reason); }),
       all_block_list_(
           *shared_memory_->find_or_construct<bip_list<shm_ptr<MemBlock>>>(
               "CA_all_block_list")(shared_memory_->get_segment_manager())),
@@ -84,7 +85,7 @@ MemBlock *CachingAllocator::Alloc(size_t nbytes, cudaStream_t cuda_stream,
                  << "OOM: Cannot find free memory block, tried_global_stream = "
                  << tried_global_stream
                  << ", tried_expand_va = " << tried_expand_va << ".";
-    ReportOOM();
+    ReportOOM(page_pool.config.device_id, cuda_stream, OOMReason::NO_MEMORY_BLOCK);
   }
   CHECK(CHECK_LEVEL < 1 || CheckStateInternal(lock));
   return block;
@@ -159,7 +160,7 @@ CachingAllocator::GetStreamContext(cudaStream_t cuda_stream,
     auto *context =
         new (shared_memory_->allocate(sizeof(StreamContext))) StreamContext{
             process_local_,
-            page_pool_.config.device_id,
+            page_pool.config.device_id,
             cuda_stream,
             config.small_block_nbytes,
         };
@@ -226,7 +227,10 @@ shm_ptr<MemBlock> CachingAllocator::SendMemBlock(MemBlock *mem_block) {
   mem_block->ref_count++;
   return handle;
 }
-void CachingAllocator::ReportOOM() {
+void CachingAllocator::ReportOOM(int device_id, cudaStream_t cuda_stream, OOMReason reason) {
+  for (auto *oom_observer : oom_observers_) {
+    (*oom_observer)(device_id, cuda_stream, reason);
+  }
   for (auto &&[stream, handle] : stream_context_map_) {
     for (auto &&[is_small, label] : {std::make_pair(false, "large"), std::make_pair(true, "small")}) {
       LOG(INFO) << "~~~~~~~~~~ Stream " << stream << " (" << label << ") used / free ~~~~~~~~~~";
@@ -234,13 +238,23 @@ void CachingAllocator::ReportOOM() {
       std::array<size_t, 2> cnt = {0, 0}, sum = {0, 0}, max = {0, 0}, min = {std::numeric_limits<size_t>::max(), std::numeric_limits<size_t>::max()}, avg; // used / free
       for (auto [iter, end] = stream_context->stream_block_list.Iterators(); iter != end; ++iter) {
         auto *block = iter->ptr(shared_memory_);
+        if (block->is_small != is_small) { continue; }
         cnt[block->is_free] += 1;
         sum[block->is_free] += block->nbytes;
         max[block->is_free] = std::max(max[block->is_free], block->nbytes);
         min[block->is_free] = std::min(min[block->is_free], block->nbytes);
       }
       for (bool is_free : {false, true}) {
-        avg[is_free] = static_cast<double>(sum[is_free]) / cnt[is_free];
+        if (sum[is_free] == 0) {
+          avg[is_free] = 0;
+        } else {
+          avg[is_free] = sum[is_free] / cnt[is_free];
+        }
+      }
+      for (auto &min_value : min) {
+        if (min_value == std::numeric_limits<size_t>::max()) {
+          min_value = 0;
+        }
       }
       LOG(INFO) << "cnt: " << cnt[0] << " / " << cnt[1];
       LOG(INFO) << "sum: " << ByteDisplay(sum[0]) << " / " << ByteDisplay(sum[1]);

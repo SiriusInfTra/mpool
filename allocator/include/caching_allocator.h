@@ -25,8 +25,6 @@ struct CachingAllocatorConfig {
   size_t align_nbytes;
 };
 
-
-
 class CachingAllocator {
 public:
   const Belong belong;
@@ -39,8 +37,8 @@ public:
   }
 
 private:
-
   SharedMemory &shared_memory_;
+  CachingAllocatorStats &stats;
   MappingRegion mapping_region_;
   bip_list<shm_ptr<MemBlock>> &all_block_list_;
   ProcessLocalData process_local_;
@@ -101,6 +99,10 @@ public:
   void ReportOOM(int device_id, cudaStream_t cuda_stream, OOMReason reason);
 
   void DumpState();
+
+  const CachingAllocatorStats &GetStats() const {
+    return stats;
+  }
 };
 
 

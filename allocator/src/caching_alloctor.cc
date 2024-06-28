@@ -1,19 +1,20 @@
-#include "mapping_region.h"
-#include <array>
 #include <caching_allocator.h>
-#include <cstddef>
-#include <filesystem>
-#include <limits>
-#include <mem_block.h>
+#include <mapping_region.h>
 #include <pages.h>
 #include <shm.h>
 #include <util.h>
+
+#include <array>
+#include <utility>
+#include <cstddef>
+#include <filesystem>
+#include <limits>
 #include <fstream>
+#include <mem_block.h>
 
 #include <boost/unordered_map.hpp>
 
 #include <glog/logging.h>
-#include <utility>
 
 namespace mpool {
 
@@ -25,6 +26,7 @@ CachingAllocator::CachingAllocator(SharedMemory &shared_memory,
           page_pool.GetBelongRegistry().GetOrCreateBelong(config.belong_name)),
       config(std::move(config)), page_pool(page_pool),
       shared_memory_(shared_memory),
+      stats(*shared_memory_->find_or_construct<CachingAllocatorStats>("CA_stats")()),
       mapping_region_(shared_memory_, page_pool, belong,
                       this->config.log_prefix, this->config.va_range_scale, [&](int device_id, cudaStream_t cuda_stream, OOMReason reason){ ReportOOM(device_id, cuda_stream, reason); }),
       all_block_list_(
@@ -35,7 +37,7 @@ CachingAllocator::CachingAllocator(SharedMemory &shared_memory,
       global_stream_context_(*shared_memory_->find_or_construct<StreamContext>(
           "CA_global_stream_context")(process_local_,
                                       page_pool.config.device_id, nullptr,
-                                      this->config.small_block_nbytes)),
+                                      this->config.small_block_nbytes, stats)),
       stream_context_map_(
           *shared_memory_->find_or_construct<
               bip_unordered_map<cudaStream_t, shm_ptr<StreamContext>>>(
@@ -163,6 +165,7 @@ CachingAllocator::GetStreamContext(cudaStream_t cuda_stream,
             page_pool.config.device_id,
             cuda_stream,
             config.small_block_nbytes,
+            stats
         };
     auto [insert_iter, insert_succ] = stream_context_map_.insert(
         std::make_pair(cuda_stream, shm_ptr{context, shared_memory_}));

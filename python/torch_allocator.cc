@@ -107,7 +107,8 @@ c10::DataPtr TorchAllocator::allocate(size_t nbytes) const {
                 c10::Device(c10::DeviceType::CUDA, cur_device)};
   } else {
     auto &caching_allocator =
-        const_cast<PyCachingAllocator &>(_caching_allocator.at(cur_device));
+        const_cast<PyCachingAllocator &>(caching_allocators_.at(cur_device));
+    auto &device_stats = const_cast<c10::cuda::CUDACachingAllocator::DeviceStats&>(device_stats_.at(cur_device));
     auto *block = caching_allocator->Alloc(nbytes, stream);
     auto *addr = caching_allocator->GetBasePtr() + block->addr_offset;
     auto *extra_data = new MemBlockExtraData{
@@ -115,6 +116,8 @@ c10::DataPtr TorchAllocator::allocate(size_t nbytes) const {
       .from_sharing = false,
       .event_count = 0
     };
+    UpdateStat(device_stats.allocated_bytes, block->is_small, 1);
+    UpdateStat(device_stats.active, block->is_small, 1);
     data_ptr = {addr, extra_data, BlockDeletePtr,
                 c10::Device(c10::DeviceType::CUDA, cur_device)};
   }
@@ -134,7 +137,7 @@ void *TorchAllocator::raw_alloc_with_stream(size_t nbytes,
                                             cudaStream_t stream) {
   int device;
   /* ACC */CUDA_CALL(cudaGetDevice(&device));
-  auto &caching_allocator = _caching_allocator[device];
+  auto &caching_allocator = caching_allocators_[device];
   auto *block = caching_allocator->Alloc(nbytes, stream);
   auto *addr = caching_allocator->GetBasePtr() + block->addr_offset;
   _mem_blocks.emplace(addr, block);
@@ -147,7 +150,7 @@ void TorchAllocator::raw_delete(void *ptr) {
   TORCH_CHECK(iter != _mem_blocks.end(),
               "Trying to free a pointer not allocated here.");
   auto *block = iter->second;
-  _caching_allocator[block->device_id]->Free(block);
+  caching_allocators_[block->device_id]->Free(block);
   _mem_blocks.erase(iter);
   // LOG(WARNING) << "raw_delete " << ptr;
 }
@@ -165,7 +168,7 @@ bool TorchAllocator::initialized() {
 
 void TorchAllocator::emptyCache() { 
   ProcessEvent();
-  for (auto &caching_allocator : _caching_allocator) {
+  for (auto &caching_allocator : caching_allocators_) {
     caching_allocator->EmptyCache();
   }
 }
@@ -215,9 +218,8 @@ void TorchAllocator::ProcessEvent() {
 
 c10::cuda::CUDACachingAllocator::DeviceStats
 TorchAllocator::getDeviceStats(int device) {
-  
-  TORCH_CHECK_NOT_IMPLEMENTED(false, "getDeviceStats");
-  throw std::runtime_error("NOT IMPL");
+  auto &stats = device_stats_[device];
+  return stats;
 }
 
 void TorchAllocator::resetAccumulatedStats(int device) {
@@ -286,7 +288,7 @@ std::string TorchAllocator::name() { return "TorchAllocator"; }
 c10::intrusive_ptr<c10::StorageImpl>
 TorchAllocator::ReceiveHandle(int device_id, shm_ptr<MemBlock> handle, size_t storage_size,
                               MemBlockExtraData *extra_data) {
-  auto &caching_allocator = _caching_allocator[device_id];
+  auto &caching_allocator = caching_allocators_[device_id];
   auto *mem_block = caching_allocator->ReceiveMemBlock(handle);
   extra_data->mem_block = mem_block;
   CHECK_LE(storage_size, mem_block->nbytes);
@@ -302,7 +304,7 @@ TorchAllocator::ReceiveHandle(int device_id, shm_ptr<MemBlock> handle, size_t st
   return base;
 }
 shm_ptr<MemBlock> TorchAllocator::SendHandle(c10::StorageImpl *storage) {
-  auto &caching_allocator = _caching_allocator[storage->device().index()];
+  auto &caching_allocator = caching_allocators_[storage->device().index()];
   auto *mem_block =
       reinterpret_cast<MemBlockExtraData *>(storage->data_ptr().get_context())
           ->mem_block;

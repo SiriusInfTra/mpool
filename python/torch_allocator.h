@@ -30,9 +30,42 @@ struct MemBlockExtraData {
   std::vector<c10::cuda::CUDAStream> stream_set;
 };
 
+inline c10::cuda::CUDACachingAllocator::StatType GetStatType(bool is_small) {
+  if (is_small) {
+    return c10::cuda::CUDACachingAllocator::StatType::SMALL_POOL;
+  } else {
+    return c10::cuda::CUDACachingAllocator::StatType::LARGE_POOL;
+  }
+}
+
+inline void UpdateStat(c10::cuda::CUDACachingAllocator::StatArray &stat_array, bool is_small, int64_t amount) {
+  auto &stat = stat_array[static_cast<size_t>(GetStatType(is_small))];
+  stat.current += amount;
+  stat.peak = std::max(stat.current, stat.peak);
+  if (amount > 0) {
+    stat.allocated += amount;
+  }
+  if (amount < 0) {
+    stat.freed += -amount;
+  }
+}
+
+inline void ResetAccumulatedStat(c10::cuda::CUDACachingAllocator::StatArray &stat_array, bool is_small) {
+  auto &stat = stat_array[static_cast<size_t>(GetStatType(is_small))];
+  stat.allocated = 0;
+  stat.freed = 0;
+}
+
+inline void ResetPeakStat(c10::cuda::CUDACachingAllocator::StatArray &stat_array, bool is_small) {
+  auto &stat = stat_array[static_cast<size_t>(GetStatType(is_small))];
+  stat.peak = stat.current;
+}
+
+
 class TorchAllocator : public c10::cuda::CUDACachingAllocator::CUDAAllocator {
 public:
-  std::vector<PyCachingAllocator> _caching_allocator;
+  std::vector<PyCachingAllocator> caching_allocators_;
+  std::vector<c10::cuda::CUDACachingAllocator::DeviceStats> device_stats_;
   // PyTorch torch/csrc/CudaIPCTypes.h
   // unofficial limit on the number of recorded blocking interprocess events
   const constexpr static int64_t CUDA_IPC_MAXIMUM_EVENTS_TO_USE = 1000;
@@ -48,18 +81,19 @@ private:
   OOMObserver caching_allocator_oom_observer_;
   std::vector<c10::cuda::CUDACachingAllocator::OutOfMemoryObserver>
       torch_oom_observers_;
+  
 
   bool initialized_ = false;
 
 public:
   TorchAllocator(std::vector<PyCachingAllocator> caching_allocator)
-      : _caching_allocator(std::move(caching_allocator)),
-        event_usage_counter(0),
-        caching_allocator_oom_observer_([&](int device_id,
+      : caching_allocators_(std::move(caching_allocator)),
+        device_stats_(caching_allocators_.size()),
+        event_usage_counter(0), caching_allocator_oom_observer_([&](int device_id,
                                             cudaStream_t cuda_stream,
                                             OOMReason reason) {
           for (auto &observer : torch_oom_observers_) {
-            auto &caching_allocator = _caching_allocator.at(device_id);
+            auto &caching_allocator = caching_allocators_.at(device_id);
             size_t allocated_nbytes = caching_allocator->belong.GetPagesNum();
             size_t device_total =
                 caching_allocator->page_pool.config.pool_nbytes;
@@ -67,13 +101,13 @@ public:
             observer(device_id, allocated_nbytes, device_total, device_free);
           }
         }) {
-    for (auto &caching_allocator : _caching_allocator) {
+    for (auto &caching_allocator : caching_allocators_) {
       caching_allocator->AddOOMObserver(&caching_allocator_oom_observer_);
     }
   }
 
   ~TorchAllocator() {
-    for (auto &caching_allocator : _caching_allocator) {
+    for (auto &caching_allocator : caching_allocators_) {
       caching_allocator->RemoveOOMObserver(&caching_allocator_oom_observer_);
     }
   }
@@ -146,7 +180,7 @@ public:
       DecerEventUsage();
     }
     auto &caching_allocator =
-        _caching_allocator.at(extra_data->mem_block->device_id);
+        caching_allocators_.at(extra_data->mem_block->device_id);
     caching_allocator->Free(extra_data->mem_block);
     delete extra_data;
   }

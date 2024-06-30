@@ -38,8 +38,7 @@ MemBlock *StreamBlockList::CreateEntryExpandVA(ProcessLocalData &local,
       stream_block_list_.insert(stream_block_list_.cend(), handle);
 
   auto *stats = stats_.ptr(local.shared_memory_);
-  stats->free.sum += nbytes;
-  stats->free.cnt += 1;
+  stats->allocated[block->is_small].AddBlock(nbytes);
   return block;
 }
 
@@ -93,7 +92,11 @@ MemBlock *StreamBlockList::SplitBlock(ProcessLocalData &local,
   }
 
   auto *stats = stats_.ptr(local.shared_memory_);
-  stats->free.cnt += 1;
+  if (origin_entry->is_free) {
+    stats->free[origin_entry->is_small].SplitBlock();
+  } else {
+    stats->allocated[origin_entry->is_small].SplitBlock();
+  }
 
   return insert_after_entry;
 }
@@ -120,7 +123,7 @@ MemBlock *StreamBlockList::MergeMemEntry(ProcessLocalData &local,
   local.shared_memory_->deallocate(secound_block);
 
   auto *stats = stats_.ptr(local.shared_memory_);
-  stats->free.cnt -= 1;
+  stats->free[first_block->is_small].MergeBlock();
 
   return first_block;
 }
@@ -162,10 +165,10 @@ MemBlock *StreamFreeList::PopBlock(ProcessLocalData &local, bool is_small,
   }
   // LOG(INFO)  << "is small " << block->is_small << "free_list " <<
   // free_list.size();
-  block->is_free = false;
   auto *stat = stats_.ptr(local.shared_memory_);
-  stat->free.RemoveBlock(block->nbytes);
-  stat->allocated.AddBlock(block->nbytes);
+  stat->free[block->is_small].RemoveBlock(block->nbytes);
+  block->is_free = false;
+  stat->allocated[block->is_small].AddBlock(block->nbytes);
 
   free_list.erase(iter);
   if (block->nbytes > nbytes) {
@@ -182,11 +185,10 @@ MemBlock *StreamFreeList::PopBlock(ProcessLocalData &local, bool is_small,
 MemBlock *StreamFreeList::PopBlock(ProcessLocalData &local, MemBlock *block) {
   CHECK(block->is_free);
   free_block_list_[block->is_small].erase(block->iter_free_block_list);
-  block->is_free = false;
-
   auto *stat = stats_.ptr(local.shared_memory_);
-  stat->free.RemoveBlock(block->nbytes);
-  stat->allocated.AddBlock(block->nbytes);
+  stat->free[block->is_small].RemoveBlock(block->nbytes);
+  block->is_free = false;
+  stat->allocated[block->is_small].AddBlock(block->nbytes);
   return block;
 }
 
@@ -194,11 +196,11 @@ MemBlock *StreamFreeList::PushBlock(ProcessLocalData &local, MemBlock *block) {
   LOG_IF(INFO, VERBOSE_LEVEL >= 2) << "PushBlock " << *block;
   CHECK_GT(block->nbytes, 0) << block;
   auto &free_list = free_block_list_[block->is_small];
-  block->is_free = true;
-
+  // NOTE: this block already free
   auto *stat = stats_.ptr(local.shared_memory_);
-  stat->allocated.RemoveBlock(block->nbytes);
-  stat->free.AddBlock(block->nbytes);
+  stat->allocated[block->is_small].RemoveBlock(block->nbytes);
+  block->is_free = true;
+  stat->free[block->is_small].AddBlock(block->nbytes);
 
   auto *stream_block_list_ptr = stream_block_list_.ptr(local.shared_memory_);
   if (auto prev_block = stream_block_list_ptr->GetPrevEntry(local, block);
@@ -254,7 +256,10 @@ MemBlock *StreamFreeList::MaybeMergeAdj(ProcessLocalData &local,
   }
   if (put_free_list_large && total_nbytes >= 2_MB) {
     entry = PopBlock(local, entry);
-    entry->is_small = false;
+    auto *stats = stats_.ptr(local.shared_memory_);
+    stats->allocated[entry->is_small].RemoveBlock(entry->nbytes);
+    entry->is_small = true;
+    stats->allocated[entry->is_small].AddBlock(entry->nbytes);
     entry = PushBlock(local, entry);
   }
   return entry;

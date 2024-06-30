@@ -1,4 +1,5 @@
 #pragma once
+#include "stats.h"
 #include <cstddef>
 #include <string>
 
@@ -56,7 +57,22 @@ private:
 
   bool CheckStateInternal(const bip::scoped_lock<bip_mutex> &lock);
 
-  
+  bool CheckStats() {
+    CachingAllocatorStats stats;
+    for (auto ptr : all_block_list_) {
+      auto *block = ptr.ptr(shared_memory_);
+      if (block->is_free) {
+        stats.free[block->is_small].AddBlock(block->nbytes);
+      } else {
+        stats.allocated[block->is_small].AddBlock(block->nbytes);
+      }
+    }
+    CHECK_EQ(stats.allocated[false], this->stats.allocated[false]);
+    CHECK_EQ(stats.allocated[true], this->stats.allocated[true]);
+    CHECK_EQ(stats.free[false], this->stats.free[false]);
+    CHECK_EQ(stats.free[true], this->stats.free[true]);
+    return true;
+  }
 public:
   CachingAllocator(SharedMemory &shared_memory, PagesPool &page_pool,
                    CachingAllocatorConfig config, bool first_init);
@@ -103,6 +119,7 @@ public:
   const CachingAllocatorStats &GetStats() const {
     return stats;
   }
+
 };
 
 

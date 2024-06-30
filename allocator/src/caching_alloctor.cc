@@ -188,7 +188,9 @@ CachingAllocator::AllocWithContext(size_t nbytes, StreamContext &stream_context,
     free_block = stream_context.stream_free_list.PopBlock(
         process_local_, false, config.small_block_nbytes, 50);
     if (free_block != nullptr) {
+      stats.allocated[free_block->is_small].RemoveBlock(free_block->nbytes);
       free_block->is_small = true;
+      stats.allocated[free_block->is_small].AddBlock(free_block->nbytes);
       free_block =
           stream_context.stream_free_list.PushBlock(process_local_, free_block);
       free_block = stream_context.stream_free_list.PopBlock(process_local_,
@@ -210,6 +212,7 @@ bool CachingAllocator::CheckStateInternal(
     ret &= context.ptr(shared_memory_)
                ->stream_free_list.CheckState(process_local_);
   }
+  ret &= CheckStats();
   return ret;
 }
 

@@ -25,6 +25,23 @@
 #include <chrono>
 namespace mpool {
 
+c10::cuda::CUDACachingAllocator::Stat &GetStat(c10::cuda::CUDACachingAllocator::StatArray &arr, bool is_small) {
+  if (is_small) {
+    return arr.at(static_cast<size_t>(c10::cuda::CUDACachingAllocator::StatType::SMALL_POOL));
+  } else {
+    return arr.at(static_cast<size_t>(c10::cuda::CUDACachingAllocator::StatType::LARGE_POOL));
+  }
+}
+
+void SetStat(c10::cuda::CUDACachingAllocator::Stat &stat, const Stat &caching_allocator_stat) {
+  stat.current = caching_allocator_stat.current;
+  stat.peak = caching_allocator_stat.peak;
+  stat.allocated = caching_allocator_stat.allocated_free[0];
+  stat.freed = caching_allocator_stat.allocated_free[1];
+}
+
+
+
 class Recorder {
 private:
   std::chrono::steady_clock::time_point t0;
@@ -108,7 +125,6 @@ c10::DataPtr TorchAllocator::allocate(size_t nbytes) const {
   } else {
     auto &caching_allocator =
         const_cast<PyCachingAllocator &>(caching_allocators_.at(cur_device));
-    auto &device_stats = const_cast<c10::cuda::CUDACachingAllocator::DeviceStats&>(device_stats_.at(cur_device));
     auto *block = caching_allocator->Alloc(nbytes, stream);
     auto *addr = caching_allocator->GetBasePtr() + block->addr_offset;
     auto *extra_data = new MemBlockExtraData{
@@ -116,8 +132,6 @@ c10::DataPtr TorchAllocator::allocate(size_t nbytes) const {
       .from_sharing = false,
       .event_count = 0
     };
-    UpdateStat(device_stats.allocated_bytes, block->is_small, 1);
-    UpdateStat(device_stats.active, block->is_small, 1);
     data_ptr = {addr, extra_data, BlockDeletePtr,
                 c10::Device(c10::DeviceType::CUDA, cur_device)};
   }
@@ -216,20 +230,31 @@ void TorchAllocator::ProcessEvent() {
   }
 }
 
+
+
 c10::cuda::CUDACachingAllocator::DeviceStats
 TorchAllocator::getDeviceStats(int device) {
-  auto &stats = device_stats_[device];
+  c10::cuda::CUDACachingAllocator::DeviceStats stats;
+  auto &allocator = caching_allocators_.at(device);
+  auto &caching_allocator_stats = allocator->GetStats();
+  for (bool is_small : {false, true}) {
+    auto &stat = GetStat(stats.allocated_bytes, is_small);
+    SetStat(stat, caching_allocator_stats.mem_block_nbytes[is_small]);
+  }
+  for (bool is_small : {false, true}) {
+    auto &stat = GetStat(stats.active, is_small);
+    SetStat(stat, caching_allocator_stats.mem_block_count[is_small]);
+  }
   return stats;
 }
 
 void TorchAllocator::resetAccumulatedStats(int device) {
-  TORCH_CHECK_NOT_IMPLEMENTED(false, "resetAccumulatedStats");
-  throw std::runtime_error("NOT IMPL");
+  TORCH_WARN_ONCE("resetAccumulatedStats has no effects.");
 }
 
 void TorchAllocator::resetPeakStats(int device) {
-  TORCH_CHECK_NOT_IMPLEMENTED(false, "resetPeakStats");
-  throw std::runtime_error("NOT IMPL");
+  auto &allocator = caching_allocators_.at(device);
+  allocator->ResetPeakStats();
 }
 
 c10::cuda::CUDACachingAllocator::SnapshotInfo TorchAllocator::snapshot() {

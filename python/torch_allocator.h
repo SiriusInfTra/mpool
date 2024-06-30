@@ -18,6 +18,8 @@
 
 namespace mpool {
 
+
+
 struct MemBlockExtraData {
   MemBlock *mem_block;
 
@@ -30,42 +32,10 @@ struct MemBlockExtraData {
   std::vector<c10::cuda::CUDAStream> stream_set;
 };
 
-inline c10::cuda::CUDACachingAllocator::StatType GetStatType(bool is_small) {
-  if (is_small) {
-    return c10::cuda::CUDACachingAllocator::StatType::SMALL_POOL;
-  } else {
-    return c10::cuda::CUDACachingAllocator::StatType::LARGE_POOL;
-  }
-}
-
-inline void UpdateStat(c10::cuda::CUDACachingAllocator::StatArray &stat_array, bool is_small, int64_t amount) {
-  auto &stat = stat_array[static_cast<size_t>(GetStatType(is_small))];
-  stat.current += amount;
-  stat.peak = std::max(stat.current, stat.peak);
-  if (amount > 0) {
-    stat.allocated += amount;
-  }
-  if (amount < 0) {
-    stat.freed += -amount;
-  }
-}
-
-inline void ResetAccumulatedStat(c10::cuda::CUDACachingAllocator::StatArray &stat_array, bool is_small) {
-  auto &stat = stat_array[static_cast<size_t>(GetStatType(is_small))];
-  stat.allocated = 0;
-  stat.freed = 0;
-}
-
-inline void ResetPeakStat(c10::cuda::CUDACachingAllocator::StatArray &stat_array, bool is_small) {
-  auto &stat = stat_array[static_cast<size_t>(GetStatType(is_small))];
-  stat.peak = stat.current;
-}
-
 
 class TorchAllocator : public c10::cuda::CUDACachingAllocator::CUDAAllocator {
 public:
   std::vector<PyCachingAllocator> caching_allocators_;
-  std::vector<c10::cuda::CUDACachingAllocator::DeviceStats> device_stats_;
   // PyTorch torch/csrc/CudaIPCTypes.h
   // unofficial limit on the number of recorded blocking interprocess events
   const constexpr static int64_t CUDA_IPC_MAXIMUM_EVENTS_TO_USE = 1000;
@@ -85,10 +55,10 @@ private:
 
   bool initialized_ = false;
 
+
 public:
   TorchAllocator(std::vector<PyCachingAllocator> caching_allocator)
       : caching_allocators_(std::move(caching_allocator)),
-        device_stats_(caching_allocators_.size()),
         event_usage_counter(0), caching_allocator_oom_observer_([&](int device_id,
                                             cudaStream_t cuda_stream,
                                             OOMReason reason) {

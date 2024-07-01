@@ -41,5 +41,28 @@ def override_torch_allocator(name: str, nbytes_per_device: int):
         return _C._new_shared_cuda(None, *args)
     torch.UntypedStorage._share_cuda_ = share_cuda
     torch.UntypedStorage._new_shared_cuda = new_shared_cuda
+    return caching_allocator_list
+
+def create_caching_allocator(name: str, device_id: int, nbytes: int):
+    page_pool_config = C_PagesPoolConf(
+        device_id = device_id,
+        log_prefix= '[PagesPool] ',
+        page_nbytes = 32 * 1024 * 1024, 
+        pool_nbytes = nbytes,
+        shm_name = f'{name}_page_pool_{device_id}',
+        shm_nbytes = 16 * 1024 * 1024 # 16MB
+    )
+    page_pool = C_PagesPool(page_pool_config)
+    caching_allocator_config = C_CachingAllocatorConfig(
+        align_nbytes = 512,
+        belong_name = f'{name}',
+        log_prefix = '[CachingAllocator] ',
+        shm_name = f'{name}_caching_allocator_{device_id}',
+        shm_nbytes = 128 * 1024 * 1024, # 128MB
+        small_block_nbytes = 1024,
+        va_range_scale = 1
+    )
+    caching_allocator = C_CachingAllocator(page_pool, caching_allocator_config)
+    return caching_allocator
 
 

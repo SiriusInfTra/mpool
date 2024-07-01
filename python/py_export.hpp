@@ -22,7 +22,6 @@
 #include <pybind11/stl.h>
 
 #include "py_wrap.hpp"
-#include "torch_allocator.h"
 #include <caching_allocator.h>
 #include <cuda.h>
 #include <cuda_runtime_api.h>
@@ -31,8 +30,6 @@
 #include <string>
 #include <torch/csrc/utils/object_ptr.h>
 #include <torch/csrc/utils/python_numbers.h>
-#include <type_traits>
-#include <unordered_map>
 
 namespace py = pybind11;
 

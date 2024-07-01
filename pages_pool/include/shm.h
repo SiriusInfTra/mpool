@@ -155,6 +155,45 @@ using bip_list =
     boost::container::list<Type,
                            bip::allocator<Type, bip_shm::segment_manager>>;
 
+template<typename Type>
+class bip_list_iterator {
+private:
+  bip_shm &shm_;
+  typename bip_list<shm_ptr<Type>>::iterator iter_;
+public:
+  using iterator_category = std::bidirectional_iterator_tag;
+  using value_type = Type;
+  using difference_type = std::ptrdiff_t;
+  using pointer = Type*;
+  using reference = Type&;
+
+  bip_list_iterator(typename bip_list<shm_ptr<Type>>::iterator iter, bip_shm &shm)
+    : shm_(shm), iter_(iter) {}
+  bip_list_iterator(typename bip_list<shm_ptr<Type>>::iterator iter, SharedMemory &shm)
+    : bip_list_iterator(iter, *shm.operator->()) {}
+
+  bip_list_iterator &operator--() {
+    iter_--;
+    return *this;
+  }
+
+  bip_list_iterator &operator++() {
+    iter_++;
+    return *this;
+  }
+
+  pointer operator*() const { return iter_->ptr(shm_); }
+
+  friend bool operator==(const bip_list_iterator& a, const bip_list_iterator& b) {
+      return a.iter_ == b.iter_;
+  }
+
+  friend bool operator!=(const bip_list_iterator& a, const bip_list_iterator& b) {
+      return a.iter_ != b.iter_;
+  }
+
+};
+
 using bip_string = bip::basic_string<char, std::char_traits<char>, bip::allocator<char, bip_shm::segment_manager>>;
 
 } // namespace mpool

@@ -61,16 +61,19 @@ private:
     CachingAllocatorStats stats;
     for (auto ptr : all_block_list_) {
       auto *block = ptr.ptr(shared_memory_);
-      if (block->is_free) {
-        stats.free[block->is_small].AddBlock(block->nbytes);
-      } else {
-        stats.allocated[block->is_small].AddBlock(block->nbytes);
-      }
+      stats.mem_block_nbytes[block->is_small].allocated_free[block->is_free] += block->nbytes;
+      stats.mem_block_nbytes[block->is_small].current += block->nbytes;
+      stats.mem_block_count[block->is_small].allocated_free[block->is_free]  += 1;
+      stats.mem_block_count[block->is_small].current += 1;
     }
-    CHECK_EQ(stats.allocated[false], this->stats.allocated[false]);
-    CHECK_EQ(stats.allocated[true], this->stats.allocated[true]);
-    CHECK_EQ(stats.free[false], this->stats.free[false]);
-    CHECK_EQ(stats.free[true], this->stats.free[true]);
+    for (bool is_small : {false, true}) {
+      stats.mem_block_count[is_small].peak = this->stats.mem_block_count[is_small].peak;
+      stats.mem_block_nbytes[is_small].peak = this->stats.mem_block_nbytes[is_small].peak;
+    }
+    CHECK_EQ(stats.mem_block_count[false], this->stats.mem_block_count[false]);
+    CHECK_EQ(stats.mem_block_nbytes[false], this->stats.mem_block_nbytes[false]);
+    CHECK_EQ(stats.mem_block_count[true], this->stats.mem_block_count[true]);
+    CHECK_EQ(stats.mem_block_nbytes[true], this->stats.mem_block_nbytes[true]);
     return true;
   }
 public:
@@ -118,6 +121,14 @@ public:
 
   const CachingAllocatorStats &GetStats() const {
     return stats;
+  }
+
+  std::pair<bip_list_iterator<MemBlock>, bip_list_iterator<MemBlock>> GetAllBlocks() const {
+    return {{all_block_list_.begin(), shared_memory_}, {all_block_list_.end(), shared_memory_}};
+  }
+
+  void ResetPeakStats() {
+    stats.ResetPeakStats();
   }
 
 };

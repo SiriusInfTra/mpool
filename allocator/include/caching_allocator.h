@@ -82,8 +82,6 @@ public:
     return mapping_region_.GetBasePtr();
   }
 
-  std::byte *GetEndPtr() const { return mapping_region_.GetEndPtr(); }
-
 
   MemBlock *Alloc(size_t nbytes, size_t alignment, cudaStream_t cuda_stream,
                   size_t flags = 0) override;

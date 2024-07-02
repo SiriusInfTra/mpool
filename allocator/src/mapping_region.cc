@@ -10,33 +10,17 @@
 
 namespace mpool {
 
-MappingRegion::MappingRegion(SharedMemory &shared_memory, PagesPool &page_pool,
-                             Belong belong, std::string log_prefix,
-                             size_t va_range_scale, std::function<void(int device_id, cudaStream_t cuda_stream, OOMReason reason)>  ReportOOM)
-    : log_prefix(log_prefix), mem_block_nbytes(page_pool.config.page_nbytes),
-      mem_block_num(page_pool.config.pool_nbytes /
-                    page_pool.config.page_nbytes),
-      va_range_scale(va_range_scale), belong(belong),
-      shared_memory_(shared_memory),
-      shared_global_mappings_(
-          *shared_memory->find_or_construct<bip_vector<index_t>>(
-              "ME_shared_global_mappings")(
-              shared_memory->get_segment_manager())),
-      page_pool_(page_pool), ReportOOM(ReportOOM) {
-  CU_CALL(cuMemAddressReserve(reinterpret_cast<CUdeviceptr *>(&base_ptr_),
-                              mem_block_nbytes * mem_block_num * va_range_scale,
-                              mem_block_nbytes, 0, 0));
-  LOG(INFO) << log_prefix << "dev_ptr = " << base_ptr_
-            << ", mem_block_nbytes = " << mem_block_nbytes
-            << ", mem_block_num = " << mem_block_num
-            << ", va_range_scale = " << va_range_scale << ".";
-}
-
 index_t MappingRegion::GetVirtualIndex(ptrdiff_t addr_offset) const {
   return addr_offset / mem_block_nbytes;
 }
 
-void MappingRegion::EnsureMemBlockWithMappings(
+/** Implementation Details: Ensure MemBlock with valid mappings.
+  * If the virtual address range is not allocated with physical pages, allocate
+  * physical pages. If the virtual address range is allocated with physical
+  * pages remotely, retain those pages. Otherwise, the virtual address range
+  * has valid mappings. So just do nothing.
+  */
+void MappingRegion::AllocMappingsAndUpdateFlags(
     MemBlock *block, bip_list<shm_ptr<MemBlock>> &all_block_list) {
   if (block->addr_offset + block->nbytes > mem_block_nbytes * mem_block_num * va_range_scale) {
     LOG(WARNING) << "OOM: Cannot reserve VA for block: " << block
@@ -134,7 +118,7 @@ void MappingRegion::EnsureMemBlockWithMappings(
       DCHECK_GE(next_block->unalloc_pages, 1);
       next_block->unalloc_pages--;
       DCHECK_EQ(next_block->unalloc_pages,
-                GetUnallocPages(next_block->addr_offset, next_block->nbytes))
+                CalculateUnallocFlags(next_block->addr_offset, next_block->nbytes))
           << next_block;
       next_iter++;
     }
@@ -149,14 +133,14 @@ void MappingRegion::EnsureMemBlockWithMappings(
       DCHECK_GE(prev_block->unalloc_pages, 1);
       prev_block->unalloc_pages--;
       DCHECK_EQ(prev_block->unalloc_pages,
-                GetUnallocPages(prev_block->addr_offset, prev_block->nbytes))
+                CalculateUnallocFlags(prev_block->addr_offset, prev_block->nbytes))
           << prev_block;
     }
   }  
   // LOG(INFO) << "EnsureMemBlockWithMappings: " << self_page_table_;
 }
 
-int32_t MappingRegion::GetUnallocPages(ptrdiff_t addr_offset, size_t nbytes) {
+int MappingRegion::CalculateUnallocFlags(ptrdiff_t addr_offset, size_t nbytes) {
   index_t va_range_l_i = GetVirtualIndex(addr_offset);
   index_t va_range_r_i = GetVirtualIndex(addr_offset + nbytes - 1) + 1;
   int unalloc_pages = 0;
@@ -206,7 +190,7 @@ void MappingRegion::UnMapPages(const std::vector<index_t> &unmap_pages) {
 
 
 
-void MappingRegion::EmptyCache(bip_list<shm_ptr<MemBlock>> &block_list) {
+void MappingRegion::EmptyCacheAndUpdateFlags(bip_list<shm_ptr<MemBlock>> &block_list) {
   LOG_IF(INFO, VERBOSE_LEVEL >= 0) << "EmptyCache";
   std::vector<index_t> release_pages;
   std::vector<index_t> unmap_pages;
@@ -272,4 +256,27 @@ void MappingRegion::EmptyCache(bip_list<shm_ptr<MemBlock>> &block_list) {
   // UnMapPages(unmap_pages);
 }
 
+IMappingRegion::IMappingRegion(
+    SharedMemory &shared_memory, PagesPool &page_pool, Belong belong,
+    std::string log_prefix, size_t va_range_scale,
+    std::function<void(int device_id, cudaStream_t cuda_stream,
+                       OOMReason reason)>
+        ReportOOM) : log_prefix(log_prefix), mem_block_nbytes(page_pool.config.page_nbytes),
+      mem_block_num(page_pool.config.pool_nbytes /
+                    page_pool.config.page_nbytes),
+      va_range_scale(va_range_scale), belong(belong),
+      shared_memory_(shared_memory),
+      shared_global_mappings_(
+          *shared_memory->find_or_construct<bip_vector<index_t>>(
+              "ME_shared_global_mappings")(
+              shared_memory->get_segment_manager())),
+      page_pool_(page_pool), ReportOOM(ReportOOM) {
+  CU_CALL(cuMemAddressReserve(reinterpret_cast<CUdeviceptr *>(&base_ptr_),
+                              mem_block_nbytes * mem_block_num * va_range_scale,
+                              mem_block_nbytes, 0, 0));
+  LOG(INFO) << log_prefix << "dev_ptr = " << base_ptr_
+            << ", mem_block_nbytes = " << mem_block_nbytes
+            << ", mem_block_num = " << mem_block_num
+            << ", va_range_scale = " << va_range_scale << ".";
+}
 } // namespace mpool

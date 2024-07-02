@@ -2,15 +2,11 @@
 
 namespace mpool {
 
-std::unordered_map<nvinfer1::IBuilder*, TensorRTAllocator*> TensorRTAllocator::builder_to_allocator;
+std::unordered_map<nvinfer1::IBuilder *, TensorRTAllocator *>
+    TensorRTAllocator::builder_to_allocator;
 
 TensorRTAllocator::TensorRTAllocator(std::vector<PyCachingAllocator> allocators)
     : allocators_(std::move(allocators)) {}
-
-void * TensorRTAllocator::allocate(uint64_t const size, uint64_t const alignment,
-                            nvinfer1::AllocatorFlags const flags) noexcept {
-  return allocateAsync(size, alignment, flags, 0);
-}
 
 void *TensorRTAllocator::reallocate(void *const baseAddr, uint64_t alignment,
                                     uint64_t newSize) noexcept {
@@ -19,22 +15,18 @@ void *TensorRTAllocator::reallocate(void *const baseAddr, uint64_t alignment,
   CUDA_CALL(cudaGetDevice(&device));
   auto &allocator = allocators_.at(device);
   std::unique_lock lock{mutex_};
-  auto iter = mem_blocks_.find(static_cast<std::byte*>(baseAddr));
+  auto iter = mem_blocks_.find(static_cast<std::byte *>(baseAddr));
   if (iter == mem_blocks_.end()) {
     return nullptr;
   }
   auto *mem_block = iter->second;
-  auto *resized_block = allocator->Realloc(mem_block, newSize, mem_block->stream);
-  auto *resized_addr = allocator->GetBasePtr() + resized_block->addr_offset;
-  if (baseAddr != resized_addr) {
-    mem_blocks_.erase(iter);
-    mem_blocks_.insert({resized_addr, resized_block});
+  auto *resized_block =
+      allocator->Realloc(mem_block, newSize, mem_block->stream, false);
+  if (resized_block == nullptr) {
+    return nullptr;
   }
+  auto *resized_addr = allocator->GetBasePtr() + resized_block->addr_offset;
   return resized_addr;
-}
-
-bool TensorRTAllocator::deallocate(void *const memory) noexcept {
-  return deallocateAsync(memory, 0);
 }
 
 void *TensorRTAllocator::allocateAsync(uint64_t const size,

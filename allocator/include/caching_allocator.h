@@ -193,13 +193,13 @@ public:
   MemBlock *Alloc(size_t nbytes, cudaStream_t cuda_stream,
                   bool try_expand_VA = true);
 
-  MemBlock *Realloc(MemBlock *block, size_t nbytes, cudaStream_t cuda_stream) {
+  MemBlock *Realloc(MemBlock *block, size_t nbytes, cudaStream_t cuda_stream, bool fallback_memcpy = true) {
     bip::scoped_lock lock{shared_memory_.GetMutex()};
     CHECK_EQ(block->stream, cuda_stream);
     auto &context = GetStreamContext(cuda_stream, lock);
     auto *resized_block =
         context.stream_free_list.ResizeBlock(process_local_, block, nbytes);
-    if (resized_block != nullptr) {
+    if (!fallback_memcpy || resized_block != nullptr) {
       return resized_block;
     }
     resized_block = Alloc0(nbytes, cuda_stream, true, lock);

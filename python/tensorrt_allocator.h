@@ -15,17 +15,19 @@
 #include <glog/logging.h>
 
 namespace mpool {
-class TensorRTAllocator : public nvinfer1::IGpuAllocator {
+class TensorRTAllocator : public nvinfer1::IGpuAsyncAllocator {
 private:
   std::vector<PyCachingAllocator> allocators_;
   std::unordered_map<std::byte *, MemBlock *> mem_blocks_;
   std::mutex mutex_;
-  static std::unordered_map<nvinfer1::IBuilder*, TensorRTAllocator*> builder_to_allocator;
+  static std::unordered_map<nvinfer1::IBuilder *, TensorRTAllocator *>
+      builder_to_allocator;
 
 public:
   TensorRTAllocator(std::vector<PyCachingAllocator> allocators);
 
-  static void SetIGPUAllocator(nvinfer1::IBuilder *builder, std::vector<PyCachingAllocator> allocators) {
+  static void SetIGPUAllocator(nvinfer1::IBuilder *builder,
+                               std::vector<PyCachingAllocator> allocators) {
     auto allocator = new TensorRTAllocator(allocators);
     builder->setGpuAllocator(allocator);
     builder_to_allocator[builder] = allocator;
@@ -33,20 +35,15 @@ public:
 
   static void UnsetIGPUAllocator(nvinfer1::IBuilder *builder) {
     builder->setGpuAllocator(nullptr);
-    if (auto iter = builder_to_allocator.find(builder); iter != builder_to_allocator.cend()) {
+    if (auto iter = builder_to_allocator.find(builder);
+        iter != builder_to_allocator.cend()) {
       delete iter->second;
       builder_to_allocator.erase(iter);
     }
   }
 
-  TRT_DEPRECATED void *
-  allocate(uint64_t const size, uint64_t const alignment,
-           nvinfer1::AllocatorFlags const flags) noexcept override;
-
   void *reallocate(void *const baseAddr, uint64_t alignment,
                    uint64_t newSize) noexcept override;
-
-  TRT_DEPRECATED bool deallocate(void *const memory) noexcept override;
 
   void *allocateAsync(uint64_t const size, uint64_t const alignment,
                       nvinfer1::AllocatorFlags const flags,

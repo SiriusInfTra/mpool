@@ -108,6 +108,8 @@ public:
 
   MemBlock *PopBlock(ProcessLocalData &local, MemBlock *block);
 
+  MemBlock *ResizeBlock(ProcessLocalData &local, MemBlock *block, size_t nbytes);
+
   MemBlock *PushBlock(ProcessLocalData &local, MemBlock *block);
 
   MemBlock *MaybeMergeAdj(ProcessLocalData &local, MemBlock *entry);

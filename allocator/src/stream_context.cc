@@ -1,3 +1,5 @@
+#include "mem_block.h"
+#include <iterator>
 #include <stream_context.h>
 
 #include <unordered_set>
@@ -182,6 +184,26 @@ MemBlock *StreamFreeList::PopBlock(ProcessLocalData &local, MemBlock *block) {
   stat->SetBlockFree(block, false);
   return block;
 }
+
+MemBlock *StreamFreeList::ResizeBlock(ProcessLocalData &local, MemBlock *block, size_t nbytes) {
+  auto *stream_block_list = stream_block_list_.ptr(local.shared_memory_);
+  auto *next_block = stream_block_list->GetNextEntry(local, block);
+  if (next_block == nullptr || !next_block->is_free || block->addr_offset + block->nbytes != next_block->nbytes) {
+    return nullptr;
+  }
+  PopBlock(local, next_block);
+  if (block->nbytes + next_block->nbytes < nbytes) {
+    auto *next_block2 = stream_block_list->SplitBlock(local, next_block, next_block->nbytes - (nbytes - block->nbytes));
+    PushBlock(local, next_block2);
+  }
+  if (next_block->is_small != block->is_small) {
+    auto *stat = stats_.ptr(local.shared_memory_);
+    stat->SetBlockIsSmall(next_block, block->is_small);
+  }
+  block = stream_block_list->MergeMemEntry(local, block, next_block);
+  return block;
+}
+
 
 MemBlock *StreamFreeList::PushBlock(ProcessLocalData &local, MemBlock *block) {
   LOG_IF(INFO, VERBOSE_LEVEL >= 2) << "PushBlock " << *block;

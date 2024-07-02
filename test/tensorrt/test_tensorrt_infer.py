@@ -5,16 +5,16 @@ import pycuda.driver as cuda
 import pycuda.autoinit # must import
 import numpy as np
 import mpool
+from argparse import ArgumentParser
 
 TRT_LOGGER = trt.Logger(trt.Logger.WARNING)
 
 mpool_allocator: Optional[mpool.C_CachingAllocator] = None
-mpool_allocator = mpool.create_caching_allocator('test_tensorrt', 0, 12 * 1024 * 1024 * 1024)
 
 
 def allocate_memblock(nbytes, cuda_stream) -> int:
     if mpool_allocator is not None:
-        mem_block = mpool_allocator.alloc(nbytes, cuda_stream, True)
+        mem_block = mpool_allocator.alloc(nbytes, cuda_stream.handle, True)
         addr = mpool_allocator.base_ptr + mem_block.addr_offset
         return addr
     else:
@@ -88,17 +88,28 @@ def do_inference(context, engine, bindings, inputs, outputs, stream):
     return outputs[0]['host']
 
 def main():
+    parser = ArgumentParser()
+    parser.add_argument('--use-mpool', action='store_true')
+    args = parser.parse_args()
+    if args.use_mpool:
+        global mpool_allocator
+        mpool_allocator = mpool.create_caching_allocator('test_tensorrt', 0, 12 * 1024 * 1024 * 1024)
+        print('Use mpool.')
+    else:
+        print('Not use mpool.')
     onnx_file_path = os.path.join(os.path.dirname(__file__), "resnet152.onnx")
     engine = build_engine(onnx_file_path)
     context = engine.create_execution_context()
     inputs, outputs, bindings, stream = allocate_buffers(engine)
 
     # Assume input is a numpy array of the right shape
+    np.random.seed(0)
     input_data = np.random.rand(1, 3, 224, 224).astype(np.float32)
+    print(input_data)
     np.copyto(inputs[0]['host'], input_data.ravel())
 
     result = do_inference(context, engine, bindings, inputs, outputs, stream)
-    print(result[:10])
+    print(f'Result {result[:10]}')
 
 if __name__ == '__main__':
     main()

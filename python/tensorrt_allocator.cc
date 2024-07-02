@@ -14,8 +14,23 @@ void * TensorRTAllocator::allocate(uint64_t const size, uint64_t const alignment
 
 void *TensorRTAllocator::reallocate(void *const baseAddr, uint64_t alignment,
                                     uint64_t newSize) noexcept {
-  LOG(FATAL) << "NOT IMPL: reallocate.";
-  return nullptr;
+  CHECK_LE(alignment, 512); /* current alignment is fixed */
+  int device;
+  CUDA_CALL(cudaGetDevice(&device));
+  auto &allocator = allocators_.at(device);
+  std::unique_lock lock{mutex_};
+  auto iter = mem_blocks_.find(static_cast<std::byte*>(baseAddr));
+  if (iter == mem_blocks_.end()) {
+    return nullptr;
+  }
+  auto *mem_block = iter->second;
+  auto *resized_block = allocator->Realloc(mem_block, newSize, mem_block->stream);
+  auto *resized_addr = allocator->GetBasePtr() + resized_block->addr_offset;
+  if (baseAddr != resized_addr) {
+    mem_blocks_.erase(iter);
+    mem_blocks_.insert({resized_addr, resized_block});
+  }
+  return resized_addr;
 }
 
 bool TensorRTAllocator::deallocate(void *const memory) noexcept {

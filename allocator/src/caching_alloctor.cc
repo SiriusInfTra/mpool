@@ -53,92 +53,16 @@ CachingAllocator::~CachingAllocator() {
 
 MemBlock *CachingAllocator::Alloc(size_t nbytes, cudaStream_t cuda_stream,
                                   bool try_expand_VA) {
-  LOG_IF(INFO, VERBOSE_LEVEL >= 1)
-      << "Alloc " << ByteDisplay(nbytes) << ", stream = " << cuda_stream
-      << ", try_expand_VA = " << try_expand_VA << ".";
-  CHECK_GT(nbytes, 0);
-  bool tried_global_stream = false, tried_expand_va = false;
   bip::scoped_lock lock{shared_memory_.GetMutex()};
-  CHECK(CHECK_LEVEL < 1 || CheckStateInternal(lock));
-  nbytes = (nbytes + config.align_nbytes - 1) & ~(config.align_nbytes - 1);
-  auto &stream_context = GetStreamContext(cuda_stream, lock);
-  auto *block = AllocWithContext(nbytes, stream_context, lock);
-  if (block == nullptr) {
-    block = AllocWithContext(nbytes, global_stream_context_, lock);
-    tried_global_stream = true;
-  }
-  if (block == nullptr && try_expand_VA) {
-    CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
-    block = stream_context.stream_block_list.CreateEntryExpandVA(process_local_,
-                                                                 nbytes);
-    LOG_IF(INFO, VERBOSE_LEVEL >= 3) << block;
-    CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
-    stream_context.stream_free_list.PushBlock(process_local_, block);
-    CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
-    block = AllocWithContext(nbytes, stream_context, lock);
-    tried_expand_va = true;
-  }
-  CHECK(CHECK_LEVEL < 2 || CheckStateInternal(lock));
-  if (block != nullptr) {
-    mapping_region_.EnsureMemBlockWithMappings(block, all_block_list_);
-    block->ref_count += 1;
-  } else {
-    LOG(WARNING) << config.log_prefix
-                 << "OOM: Cannot find free memory block, tried_global_stream = "
-                 << tried_global_stream
-                 << ", tried_expand_va = " << tried_expand_va << ".";
-    ReportOOM(page_pool.config.device_id, cuda_stream, OOMReason::NO_MEMORY_BLOCK);
-  }
-  CHECK(CHECK_LEVEL < 1 || CheckStateInternal(lock));
-  return block;
+  return Alloc0(nbytes, cuda_stream, try_expand_VA, lock);
 }
 
 void CachingAllocator::Free(const MemBlock *block0) {
-  auto *block = const_cast<MemBlock *>(block0);
-  LOG_IF(INFO, VERBOSE_LEVEL >= 1)
-      << config.log_prefix << "Free block " << block;
   bip::scoped_lock lock{shared_memory_.GetMutex()};
-  CHECK(CHECK_LEVEL < 1 || CheckStateInternal(lock));
-  if (--block->ref_count > 0) {
-    return;
-  }
-  auto &context = GetStreamContext(block->stream, lock);
-  CHECK(!block->is_free) << block;
-  CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
-  if (block->is_small) {
-    block = context.stream_free_list.PushBlock(process_local_, block);
-    CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
-    block = context.stream_free_list.MaybeMergeAdj(process_local_, block);
-    CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
-  } else {
-    block = context.stream_free_list.PushBlock(process_local_, block);
-    if (auto *prev_entry =
-            context.stream_block_list.GetPrevEntry(process_local_, block);
-        prev_entry && prev_entry->is_small && prev_entry->is_free &&
-        prev_entry->unalloc_pages == 0) {
-      size_t prev_entry_nbytes = prev_entry->nbytes;
-      auto *maybe_merged_entry =
-          context.stream_free_list.MaybeMergeAdj(process_local_, prev_entry);
-      CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
-      if (maybe_merged_entry->nbytes > prev_entry_nbytes) {
-        block = maybe_merged_entry;
-      }
-    }
-    if (auto *next_entry =
-            context.stream_block_list.GetNextEntry(process_local_, block);
-        next_entry && next_entry->is_small && next_entry->is_free &&
-        next_entry->unalloc_pages == 0) {
-      size_t next_entry_nbytes = next_entry->nbytes;
-      auto *maybe_merged_entry =
-          context.stream_free_list.MaybeMergeAdj(process_local_, next_entry);
-      CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
-      if (maybe_merged_entry->nbytes > next_entry_nbytes) {
-        block = maybe_merged_entry;
-      }
-    }
-  }
-  CHECK(CHECK_LEVEL < 1 || CheckStateInternal(lock));
+  return Free0(const_cast<MemBlock*>(block0), lock);
 }
+
+
 void CachingAllocator::EmptyCache() {
   LOG_IF(INFO, VERBOSE_LEVEL)
       << config.log_prefix << "Release free physical memory.";

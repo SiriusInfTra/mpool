@@ -108,11 +108,12 @@ inline void RegisterCachingAllocator(py::module &m) {
            py::return_value_policy::move)
       .def(
           "alloc",
-          [](PyCachingAllocator &self, size_t nbytes, long cuda_stream,
-             bool try_expand_VA) {
+          [](PyCachingAllocator &self, size_t nbytes, size_t alignment, long cuda_stream,
+             size_t flags) {
             return self->Alloc(nbytes,
-                               reinterpret_cast<cudaStream_t>(cuda_stream),
-                               try_expand_VA);
+                               alignment,
+                              reinterpret_cast<cudaStream_t>(cuda_stream),
+                               flags);
           },
           py::return_value_policy::reference)
       .def("free", [](PyCachingAllocator &self,

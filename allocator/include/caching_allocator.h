@@ -1,4 +1,5 @@
 #pragma once
+#include "allocator.h"
 #include "stats.h"
 #include <boost/interprocess/sync/interprocess_mutex.hpp>
 #include <boost/interprocess/sync/scoped_lock.hpp>
@@ -29,7 +30,7 @@ struct CachingAllocatorConfig {
   size_t align_nbytes;
 };
 
-class CachingAllocator {
+class CachingAllocator: public IAllocator {
 public:
   const Belong belong;
   const CachingAllocatorConfig config;
@@ -38,6 +39,9 @@ public:
   static bool RemoveShm(const CachingAllocatorConfig &config) {
     return bip::shared_memory_object::remove(config.shm_name.c_str());
   }
+
+  const constexpr static size_t ALLOC_TRY_EXPAND_VA = 1;
+  const constexpr static size_t REALLOC_FALLBACK_MEMCPY = 1;
 
 private:
   SharedMemory &shared_memory_;
@@ -181,7 +185,7 @@ public:
 
   ~CachingAllocator();
 
-  std::byte *GetBasePtr() const { return mapping_region_.GetBasePtr(); }
+  std::byte *GetBasePtr() const override { return mapping_region_.GetBasePtr(); }
 
   std::byte *GetEndPtr() const { return mapping_region_.GetEndPtr(); }
 
@@ -190,10 +194,10 @@ public:
            ptr < mapping_region_.GetEndPtr();
   }
 
-  MemBlock *Alloc(size_t nbytes, cudaStream_t cuda_stream,
-                  bool try_expand_VA = true);
+  MemBlock *Alloc(size_t nbytes, size_t alignment, cudaStream_t cuda_stream, size_t flags = 0) override;
 
-  MemBlock *Realloc(MemBlock *block, size_t nbytes, cudaStream_t cuda_stream, bool fallback_memcpy = true) {
+  MemBlock *Realloc(MemBlock *block, size_t nbytes, cudaStream_t cuda_stream, size_t flags = 0) override {
+    bool fallback_memcpy = flags & REALLOC_FALLBACK_MEMCPY;
     bip::scoped_lock lock{shared_memory_.GetMutex()};
     CHECK_EQ(block->stream, cuda_stream);
     auto &context = GetStreamContext(cuda_stream, lock);
@@ -216,7 +220,7 @@ public:
 
   shm_ptr<MemBlock> SendMemBlock(MemBlock *mem_block);
 
-  void Free(const MemBlock *block);
+  void Free(const MemBlock *block, size_t flags = 0) override;
 
   void EmptyCache();
 

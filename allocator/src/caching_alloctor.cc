@@ -51,13 +51,12 @@ CachingAllocator::~CachingAllocator() {
       << config.log_prefix << "Release CachingAllocator";
 }
 
-MemBlock *CachingAllocator::Alloc(size_t nbytes, cudaStream_t cuda_stream,
-                                  bool try_expand_VA) {
+MemBlock *CachingAllocator::Alloc(size_t nbytes, size_t alignment, cudaStream_t cuda_stream, size_t flags) {
   bip::scoped_lock lock{shared_memory_.GetMutex()};
-  return Alloc0(nbytes, cuda_stream, try_expand_VA, lock);
+  return Alloc0(nbytes, cuda_stream, flags & CachingAllocator::ALLOC_TRY_EXPAND_VA, lock);
 }
 
-void CachingAllocator::Free(const MemBlock *block0) {
+void CachingAllocator::Free(const MemBlock *block0, size_t flags) {
   bip::scoped_lock lock{shared_memory_.GetMutex()};
   return Free0(const_cast<MemBlock*>(block0), lock);
 }

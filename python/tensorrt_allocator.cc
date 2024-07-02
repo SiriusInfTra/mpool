@@ -1,3 +1,4 @@
+#include "caching_allocator.h"
 #include <tensorrt_allocator.h>
 
 namespace mpool {
@@ -39,7 +40,7 @@ void *TensorRTAllocator::allocateAsync(uint64_t const size,
   CUDA_CALL(cudaGetDevice(&device));
   auto &allocator = allocators_.at(device);
   std::unique_lock lock{mutex_};
-  auto *mem_block = allocator->Alloc(size, cuda_stream, true);
+  auto *mem_block = allocator->Alloc(size, alignment, cuda_stream, CachingAllocator::ALLOC_TRY_EXPAND_VA);
   auto *addr = allocator->GetBasePtr() + mem_block->addr_offset;
   mem_blocks_.insert({addr, mem_block});
   return addr;

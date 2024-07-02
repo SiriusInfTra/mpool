@@ -135,7 +135,7 @@ c10::DataPtr TorchAllocator::allocate(size_t nbytes) const {
   } else {
     auto &caching_allocator =
         const_cast<PyCachingAllocator &>(caching_allocators_.at(cur_device));
-    auto *block = caching_allocator->Alloc(nbytes, stream);
+    auto *block = caching_allocator->Alloc(nbytes, 512, stream, CachingAllocator::ALLOC_TRY_EXPAND_VA);
     void *addr = reinterpret_cast<void*>(reinterpret_cast<int64_t>(caching_allocator->GetBasePtr()) + block->addr_offset);
     auto *extra_data = new MemBlockExtraData{
         .mem_block = block, .from_sharing = false, .event_count = 0};
@@ -159,7 +159,7 @@ void *TorchAllocator::raw_alloc_with_stream(size_t nbytes,
   int device;
   /* ACC */ CUDA_CALL(cudaGetDevice(&device));
   auto &caching_allocator = caching_allocators_[device];
-  auto *block = caching_allocator->Alloc(nbytes, stream);
+  auto *block = caching_allocator->Alloc(nbytes, 512, stream, CachingAllocator::ALLOC_TRY_EXPAND_VA);
   auto *addr = caching_allocator->GetBasePtr() + block->addr_offset;
   _mem_blocks.emplace(addr, block);
   // LOG(WARNING) << "raw_alloc_with_stream " << nbytes << " " << stream;

@@ -46,7 +46,7 @@ private:
 public:
   WrapMemBlock(size_t nbytes, CachingAllocator &allocator)
       : allocator(allocator), nbytes(nbytes) {
-    mem_block = allocator.Alloc(nbytes, 0);
+    mem_block = allocator.Alloc(nbytes, 512, 0, CachingAllocator::ALLOC_TRY_EXPAND_VA);
     // LOG(INFO) << "Allocated " << nbytes << " bytes at " << mem_block << ".";
     total_nbytes += nbytes;
   }

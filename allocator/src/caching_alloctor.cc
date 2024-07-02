@@ -1,3 +1,4 @@
+#include "stats.h"
 #include <caching_allocator.h>
 #include <mapping_region.h>
 #include <pages.h>
@@ -18,7 +19,7 @@
 
 namespace mpool {
 
-CachingAllocator::CachingAllocator(SharedMemory &shared_memory,
+VMMAllocator::VMMAllocator(SharedMemory &shared_memory,
                                    PagesPool &page_pool,
                                    CachingAllocatorConfig config,
                                    bool first_init)
@@ -48,27 +49,27 @@ CachingAllocator::CachingAllocator(SharedMemory &shared_memory,
               bip_unordered_map<cudaStream_t, shm_ptr<StreamContext>>>(
               "CA_stream_context_map")(shared_memory_->get_segment_manager())) {
   LOG_IF(INFO, VERBOSE_LEVEL >= 1)
-      << this->config.log_prefix << "Init CachingAllocator";
+      << this->config.log_prefix << "Init VMMAllocator";
 };
 
-CachingAllocator::~CachingAllocator() {
+VMMAllocator::~VMMAllocator() {
   LOG_IF(INFO, VERBOSE_LEVEL >= 1)
-      << config.log_prefix << "Release CachingAllocator";
+      << config.log_prefix << "Release VMMAllocator";
 }
 
-MemBlock *CachingAllocator::Alloc(size_t nbytes, size_t alignment,
+MemBlock *VMMAllocator::Alloc(size_t nbytes, size_t alignment,
                                   cudaStream_t cuda_stream, size_t flags) {
   bip::scoped_lock lock{shared_memory_.GetMutex()};
   return Alloc0(nbytes, cuda_stream,
-                flags & CachingAllocator::ALLOC_TRY_EXPAND_VA, lock);
+                flags & VMMAllocator::ALLOC_TRY_EXPAND_VA, lock);
 }
 
-void CachingAllocator::Free(const MemBlock *block0, size_t flags) {
+void VMMAllocator::Free(const MemBlock *block0, size_t flags) {
   bip::scoped_lock lock{shared_memory_.GetMutex()};
   return Free0(const_cast<MemBlock *>(block0), lock);
 }
 
-void CachingAllocator::EmptyCache() {
+void VMMAllocator::EmptyCache() {
   LOG_IF(INFO, VERBOSE_LEVEL)
       << config.log_prefix << "Release free physical memory.";
   // auto &context = GetStreamContext(cuda_stream);
@@ -83,7 +84,7 @@ void CachingAllocator::EmptyCache() {
 };
 
 StreamContext &
-CachingAllocator::GetStreamContext(cudaStream_t cuda_stream,
+VMMAllocator::GetStreamContext(cudaStream_t cuda_stream,
                                    const bip::scoped_lock<bip_mutex> &lock) {
   auto iter = stream_context_map_.find(cuda_stream);
   if (iter == stream_context_map_.end()) {
@@ -100,7 +101,7 @@ CachingAllocator::GetStreamContext(cudaStream_t cuda_stream,
 }
 
 MemBlock *
-CachingAllocator::AllocWithContext(size_t nbytes, StreamContext &stream_context,
+VMMAllocator::AllocWithContext(size_t nbytes, StreamContext &stream_context,
                                    const bip::scoped_lock<bip_mutex> &lock) {
   bool is_small = nbytes <= config.small_block_nbytes;
   CHECK(CHECK_LEVEL < 2 || CheckStateInternal(lock));
@@ -122,7 +123,7 @@ CachingAllocator::AllocWithContext(size_t nbytes, StreamContext &stream_context,
   CHECK(CHECK_LEVEL < 2 || CheckStateInternal(lock));
   return free_block;
 }
-bool CachingAllocator::CheckStateInternal(
+bool VMMAllocator::CheckStateInternal(
     const bip::scoped_lock<bip_mutex> &lock) {
   bool ret = true;
   ret &=
@@ -138,7 +139,7 @@ bool CachingAllocator::CheckStateInternal(
   return ret;
 }
 
-MemBlock *CachingAllocator::ReceiveMemBlock(shm_ptr<MemBlock> handle) {
+MemBlock *VMMAllocator::ReceiveMemBlock(shm_ptr<MemBlock> handle) {
   bip::scoped_lock lock{shared_memory_.GetMutex()};
   auto *mem_block = handle.ptr(shared_memory_);
   LOG_IF(INFO, VERBOSE_LEVEL >= 0)
@@ -147,7 +148,7 @@ MemBlock *CachingAllocator::ReceiveMemBlock(shm_ptr<MemBlock> handle) {
   CHECK_GE(mem_block->addr_offset, 0) << "Invalid handle";
   return mem_block;
 }
-shm_ptr<MemBlock> CachingAllocator::SendMemBlock(MemBlock *mem_block) {
+shm_ptr<MemBlock> VMMAllocator::SendMemBlock(MemBlock *mem_block) {
   shm_ptr<MemBlock> handle{mem_block, shared_memory_};
   LOG_IF(INFO, VERBOSE_LEVEL >= 0)
       << "Send MemBlock: " << mem_block << " -> " << handle << ".";
@@ -155,7 +156,7 @@ shm_ptr<MemBlock> CachingAllocator::SendMemBlock(MemBlock *mem_block) {
   mem_block->ref_count++;
   return handle;
 }
-void CachingAllocator::ReportOOM(int device_id, cudaStream_t cuda_stream,
+void VMMAllocator::ReportOOM(int device_id, cudaStream_t cuda_stream,
                                  OOMReason reason) {
   for (auto *oom_observer : oom_observers_) {
     (*oom_observer)(device_id, cuda_stream, reason);
@@ -206,7 +207,7 @@ void CachingAllocator::ReportOOM(int device_id, cudaStream_t cuda_stream,
   }
   LOG(FATAL) << config.log_prefix << "Abort.";
 }
-void CachingAllocator::DumpState() {
+void VMMAllocator::DumpState() {
   auto now = std::chrono::system_clock::now();
   auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                 now.time_since_epoch()) %
@@ -246,7 +247,7 @@ void CachingAllocator::DumpState() {
     }
   }
 }
-bool CachingAllocator::CheckStats() {
+bool VMMAllocator::CheckStats() {
   CachingAllocatorStats stats;
   for (auto ptr : all_block_list_) {
     auto *block = ptr.ptr(shared_memory_);
@@ -268,7 +269,7 @@ bool CachingAllocator::CheckStats() {
   CHECK_EQ(stats.mem_block_nbytes[true], this->stats.mem_block_nbytes[true]);
   return true;
 }
-void CachingAllocator::Free0(MemBlock *block,
+void VMMAllocator::Free0(MemBlock *block,
                              bip::scoped_lock<bip::interprocess_mutex> &lock) {
   LOG_IF(INFO, VERBOSE_LEVEL >= 1)
       << config.log_prefix << "Free block " << block;
@@ -314,7 +315,7 @@ void CachingAllocator::Free0(MemBlock *block,
   CHECK(CHECK_LEVEL < 1 || CheckStateInternal(lock));
 }
 MemBlock *
-CachingAllocator::Alloc0(size_t nbytes, cudaStream_t cuda_stream,
+VMMAllocator::Alloc0(size_t nbytes, cudaStream_t cuda_stream,
                          bool try_expand_VA,
                          bip::scoped_lock<bip::interprocess_mutex> &lock) {
   LOG_IF(INFO, VERBOSE_LEVEL >= 1)
@@ -356,7 +357,7 @@ CachingAllocator::Alloc0(size_t nbytes, cudaStream_t cuda_stream,
   CHECK(CHECK_LEVEL < 1 || CheckStateInternal(lock));
   return block;
 }
-MemBlock *CachingAllocator::Realloc(MemBlock *block, size_t nbytes,
+MemBlock *VMMAllocator::Realloc(MemBlock *block, size_t nbytes,
                                     cudaStream_t cuda_stream, size_t flags) {
   bool fallback_memcpy = flags & REALLOC_FALLBACK_MEMCPY;
   bip::scoped_lock lock{shared_memory_.GetMutex()};
@@ -376,7 +377,7 @@ MemBlock *CachingAllocator::Realloc(MemBlock *block, size_t nbytes,
       cudaMemcpyAsync(dst, src, count, cudaMemcpyDeviceToDevice, cuda_stream));
   return resized_block;
 }
-size_t CachingAllocator::GetDeviceFreeNbytes() const {
+size_t VMMAllocator::GetDeviceFreeNbytes() const {
   size_t free_nbytes =
       page_pool.GetBelongRegistry().GetFreeBelong().GetPagesNum() *
       page_pool.config.page_nbytes;
@@ -384,17 +385,17 @@ size_t CachingAllocator::GetDeviceFreeNbytes() const {
                  belong.GetAllocatedNbytes();
   return free_nbytes;
 }
-void CachingAllocator::AddOOMObserver(OOMObserver *observer) {
+void VMMAllocator::AddOOMObserver(OOMObserver *observer) {
   oom_observers_.push_back(observer);
 }
-void CachingAllocator::RemoveOOMObserver(OOMObserver *observer) {
+void VMMAllocator::RemoveOOMObserver(OOMObserver *observer) {
   oom_observers_.erase(
       std::remove(oom_observers_.begin(), oom_observers_.end(), observer));
 }
 std::pair<bip_list_iterator<MemBlock>, bip_list_iterator<MemBlock>>
-CachingAllocator::GetAllBlocks() const {
+VMMAllocator::GetAllBlocks() const {
   return {{all_block_list_.begin(), shared_memory_},
           {all_block_list_.end(), shared_memory_}};
 }
-void CachingAllocator::ResetPeakStats() { stats.ResetPeakStats(); }
+void VMMAllocator::ResetPeakStats() { stats.ResetPeakStats(); }
 } // namespace mpool

@@ -1,4 +1,5 @@
 #pragma once
+#include <cstddef>
 #include <stats.h>
 #include <mapping_region.h>
 #include <mem_block.h>
@@ -98,13 +99,45 @@ private:
 public:
   StreamFreeList(int device_id, cudaStream_t cuda_stream,
                  SharedMemory &shared_memory,
-                 StreamBlockList &stream_block_listm, CachingAllocatorStats &stats);
+                 StreamBlockList &stream_block_list, CachingAllocatorStats &stats);
 
   StreamFreeList &operator=(const StreamFreeList &) = delete;
   StreamFreeList(const StreamFreeList &) = delete;
 
   MemBlock *PopBlock(ProcessLocalData &local, bool is_small, size_t nbytes,
                      size_t find_optimal_retry);
+
+  MemBlock *PopBlock(ProcessLocalData &local, bool is_small, ptrdiff_t addr_offset, size_t nbytes) {
+    auto free_list = free_block_list_[is_small];
+    
+    // TODO log(n) algorithm
+    MemBlock *mem_block = nullptr;
+    for (auto iter = free_list.lower_bound(nbytes); iter != free_list.end(); ++iter) {
+      auto *iter_block = iter->second.ptr(local.shared_memory_);
+      if (iter_block->addr_offset <= addr_offset && iter_block->addr_offset + iter_block->nbytes >= addr_offset + nbytes) {
+        mem_block = iter_block;
+        break;
+      }
+    }
+    mem_block = PopBlock(local, mem_block);
+    auto *stream_block_list = stream_block_list_.ptr(local.shared_memory_);
+    CHECK(mem_block != nullptr);
+    if (mem_block->addr_offset < addr_offset) {
+      auto remain = addr_offset - mem_block->addr_offset;
+      auto *right_mem_block = stream_block_list->SplitBlock(local, mem_block, remain);
+      PushBlock(local, mem_block);
+      mem_block = right_mem_block;
+    }
+    if (mem_block->addr_offset + mem_block->nbytes > addr_offset + nbytes) {
+      auto remain = mem_block->nbytes - nbytes;
+      auto *right_mem_block = stream_block_list->SplitBlock(local, mem_block, remain);
+      PushBlock(local, right_mem_block);
+    }
+    auto *stat = stats_.ptr(local.shared_memory_);
+    stat->SetBlockFree(mem_block, false);
+    free_list.erase(mem_block->iter_free_block_list);
+  }
+  
 
   MemBlock *PopBlock(ProcessLocalData &local, MemBlock *block);
 

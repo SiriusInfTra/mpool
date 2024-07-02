@@ -83,7 +83,7 @@ public:
    * @param nbytes The number of bytes to calculate the unallocated flags for.
    * @return The unsigned value representing the unallocated flags (count).
    */
-  virtual int CalculateUnallocFlags(ptrdiff_t addr_offset, size_t nbytes) = 0;
+  virtual int CalculateUnallocFlags(ptrdiff_t addr_offset, size_t nbytes);
 
   /**
    * Calculates the unallocated flags for a given memory block.
@@ -128,36 +128,61 @@ public:
   }
 };
 
-class MappingRegion : public IMappingRegion {
+class DynamicMappingRegion : public IMappingRegion {
 private:
   void UnMapPages(const std::vector<index_t> &unmap_pages);
 
   void ReleasePages(const std::vector<index_t> &release_pages);
 
 public:
-  MappingRegion(SharedMemory &shared_memory, PagesPool &page_pool,
-                Belong belong, std::string log_prefix, size_t va_range_scale,
-                std::function<void(int device_id, cudaStream_t cuda_stream,
-                                   OOMReason reason)>
-                    ReportOOM)
+  DynamicMappingRegion(
+      SharedMemory &shared_memory, PagesPool &page_pool, Belong belong,
+      std::string log_prefix, size_t va_range_scale,
+      std::function<void(int device_id, cudaStream_t cuda_stream,
+                         OOMReason reason)>
+          ReportOOM)
       : IMappingRegion(shared_memory, page_pool, belong, log_prefix,
                        va_range_scale, ReportOOM) {}
 
-  index_t GetVirtualIndex(ptrdiff_t addr_offset) const;
-
   void AllocMappingsAndUpdateFlags(
       MemBlock *block, bip_list<shm_ptr<MemBlock>> &all_block_list) override;
-
-  int CalculateUnallocFlags(ptrdiff_t addr_offset, size_t nbytes) override;
 
   void
   EmptyCacheAndUpdateFlags(bip_list<shm_ptr<MemBlock>> &block_list) override;
 };
 
+class StaticMappingRegion : public IMappingRegion {
+public:
+  StaticMappingRegion(
+      SharedMemory &shared_memory, PagesPool &page_pool, Belong belong,
+      std::string log_prefix, size_t va_range_scale,
+      std::function<void(int device_id, cudaStream_t cuda_stream,
+                         OOMReason reason)>
+          ReportOOM)
+      : IMappingRegion(shared_memory, page_pool, belong, log_prefix,
+                       va_range_scale, ReportOOM) {
+    CHECK_EQ(va_range_scale, 1);
+    for (size_t k = 0; k < mem_block_num; k++) {
+      self_page_table_.push_back(&page_pool.PagesView()[k]);
+    }   
+    if (shared_global_mappings_.empty()) {
+      for (size_t k = 0; k < mem_block_num; k++) {
+        shared_global_mappings_.push_back(k);
+      }
+    }
+  }
+  void AllocMappingsAndUpdateFlags(
+      MemBlock *block, bip_list<shm_ptr<MemBlock>> &all_block_list) override {
+  }
+
+  void
+  EmptyCacheAndUpdateFlags(bip_list<shm_ptr<MemBlock>> &block_list) override {}
+};
+
 struct ProcessLocalData {
   PagesPool &page_pool_;
   SharedMemory &shared_memory_;
-  MappingRegion &mapping_region_;
+  DynamicMappingRegion &mapping_region_;
   bip_list<shm_ptr<MemBlock>> &all_block_list_;
 };
 

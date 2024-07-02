@@ -23,7 +23,8 @@ struct MemBlock {
   int32_t ref_count;
 
   bip_list<shm_ptr<MemBlock>>::iterator iter_all_block_list;
-  bip_list<shm_ptr<MemBlock>>::iterator iter_stream_block_list;
+  bip_list<shm_ptr<MemBlock>>::iterator iter_stream_block_list; // caching allocator
+  // bip_map<ptrdiff_t, shm_ptr<MemBlock>>::iterator iter_all_block_map; // direct allocator
   bip_multimap<size_t, shm_ptr<MemBlock>>::iterator iter_free_block_list;
 };
 

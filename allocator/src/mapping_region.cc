@@ -10,9 +10,6 @@
 
 namespace mpool {
 
-index_t MappingRegion::GetVirtualIndex(ptrdiff_t addr_offset) const {
-  return addr_offset / mem_block_nbytes;
-}
 
 /** Implementation Details: Ensure MemBlock with valid mappings.
   * If the virtual address range is not allocated with physical pages, allocate
@@ -20,7 +17,7 @@ index_t MappingRegion::GetVirtualIndex(ptrdiff_t addr_offset) const {
   * pages remotely, retain those pages. Otherwise, the virtual address range
   * has valid mappings. So just do nothing.
   */
-void MappingRegion::AllocMappingsAndUpdateFlags(
+void DynamicMappingRegion::AllocMappingsAndUpdateFlags(
     MemBlock *block, bip_list<shm_ptr<MemBlock>> &all_block_list) {
   if (block->addr_offset + block->nbytes > mem_block_nbytes * mem_block_num * va_range_scale) {
     LOG(WARNING) << "OOM: Cannot reserve VA for block: " << block
@@ -111,7 +108,7 @@ void MappingRegion::AllocMappingsAndUpdateFlags(
     auto next_iter = std::next(block->iter_all_block_list);
     while (next_iter != all_block_list.cend()) {
       auto *next_block = next_iter->ptr(shared_memory_);
-      if (GetVirtualIndex(next_block->addr_offset) >
+      if (ByteOffsetToIndex(next_block->addr_offset) >
           missing_va_mapping_i.back()) {
         break;
       }
@@ -126,7 +123,7 @@ void MappingRegion::AllocMappingsAndUpdateFlags(
     while (prev_iter != all_block_list.cbegin()) {
       --prev_iter;
       auto *prev_block = prev_iter->ptr(shared_memory_);
-      if (GetVirtualIndex(prev_block->addr_offset + prev_block->nbytes - 1) <
+      if (ByteOffsetToIndex(prev_block->addr_offset + prev_block->nbytes - 1) <
           missing_va_mapping_i.front()) {
         break;
       }
@@ -140,28 +137,12 @@ void MappingRegion::AllocMappingsAndUpdateFlags(
   // LOG(INFO) << "EnsureMemBlockWithMappings: " << self_page_table_;
 }
 
-int MappingRegion::CalculateUnallocFlags(ptrdiff_t addr_offset, size_t nbytes) {
-  index_t va_range_l_i = GetVirtualIndex(addr_offset);
-  index_t va_range_r_i = GetVirtualIndex(addr_offset + nbytes - 1) + 1;
-  int unalloc_pages = 0;
-  for (index_t index = va_range_l_i; index < va_range_r_i; ++index) {
-    if (index >= shared_global_mappings_.size() ||
-        shared_global_mappings_[index] == INVALID_INDEX) {
-      unalloc_pages++;
-    }
-  }
-  DCHECK_LE(unalloc_pages,
-            (nbytes + mem_block_nbytes - 1) / mem_block_nbytes + 1)
-      << ByteDisplay(nbytes);
-  return unalloc_pages;
-}
-
-void MappingRegion::ReleasePages(const std::vector<index_t> &release_pages) {
+void DynamicMappingRegion::ReleasePages(const std::vector<index_t> &release_pages) {
   auto lock = page_pool_.Lock();
   page_pool_.FreePages(release_pages, belong, lock);
 }
 
-void MappingRegion::UnMapPages(const std::vector<index_t> &unmap_pages) {
+void DynamicMappingRegion::UnMapPages(const std::vector<index_t> &unmap_pages) {
   for (auto index : unmap_pages) {
     self_page_table_[index] = nullptr;
   }
@@ -190,7 +171,7 @@ void MappingRegion::UnMapPages(const std::vector<index_t> &unmap_pages) {
 
 
 
-void MappingRegion::EmptyCacheAndUpdateFlags(bip_list<shm_ptr<MemBlock>> &block_list) {
+void DynamicMappingRegion::EmptyCacheAndUpdateFlags(bip_list<shm_ptr<MemBlock>> &block_list) {
   LOG_IF(INFO, VERBOSE_LEVEL >= 0) << "EmptyCache";
   std::vector<index_t> release_pages;
   std::vector<index_t> unmap_pages;
@@ -278,5 +259,21 @@ IMappingRegion::IMappingRegion(
             << ", mem_block_nbytes = " << mem_block_nbytes
             << ", mem_block_num = " << mem_block_num
             << ", va_range_scale = " << va_range_scale << ".";
+}
+int IMappingRegion::CalculateUnallocFlags(ptrdiff_t addr_offset,
+                                          size_t nbytes) {
+  index_t va_range_l_i = ByteOffsetToIndex(addr_offset);
+  index_t va_range_r_i = ByteOffsetToIndex(addr_offset + nbytes - 1) + 1;
+  int unalloc_pages = 0;
+  for (index_t index = va_range_l_i; index < va_range_r_i; ++index) {
+    if (index >= shared_global_mappings_.size() ||
+        shared_global_mappings_[index] == INVALID_INDEX) {
+      unalloc_pages++;
+    }
+  }
+  DCHECK_LE(unalloc_pages,
+            (nbytes + mem_block_nbytes - 1) / mem_block_nbytes + 1)
+      << ByteDisplay(nbytes);
+  return unalloc_pages;
 }
 } // namespace mpool

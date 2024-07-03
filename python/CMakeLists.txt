@@ -10,7 +10,6 @@ target_link_libraries(_C PRIVATE pybind11::headers pages_pool allocator ${TORCH_
 target_include_directories(_C PUBLIC ${TENSORRT_DIR}/include)
 message("Torch library ${TORCH_LIBRARIES} ${PYTHON_LIBRARIES}")
 target_compile_definitions(_C PRIVATE VERSION_INFO=${CMAKE_PROJECT_VERSION})
-message("AAA ${CMAKE_PROJECT_VERSION_MAJOR} ${CMAKE_PROJECT_VERSION_MINOR}")
 target_compile_definitions(_C PRIVATE VERSION_MAJOR=${CMAKE_PROJECT_VERSION_MAJOR})
 target_compile_definitions(_C PRIVATE VERSION_MINOR=${CMAKE_PROJECT_VERSION_MINOR})
 target_include_directories(_C PRIVATE .)

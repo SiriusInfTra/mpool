@@ -28,19 +28,12 @@ VMMAllocator::VMMAllocator(SharedMemory &shared_memory,
       shared_memory_(shared_memory),
       stats(*shared_memory_->find_or_construct<CachingAllocatorStats>(
           "CA_stats")()),
-      mapping_region_(
-          shared_memory_, page_pool, belong, this->config.log_prefix,
-          this->config.va_range_scale,
-          [&](int device_id, cudaStream_t cuda_stream, OOMReason reason) {
-            // ReportOOM(device_id, cuda_stream, reason);
-          }),
+      
       all_block_list_(
           *shared_memory_->find_or_construct<bip_list<shm_ptr<MemBlock>>>(
               "CA_all_block_list")(shared_memory_->get_segment_manager())),
-      process_local_{page_pool, shared_memory, mapping_region_,
-                     all_block_list_},
       global_stream_context_(*shared_memory_->find_or_construct<StreamContext>(
-          "CA_global_stream_context")(process_local_,
+          "CA_global_stream_context")(shared_memory_,
                                       page_pool.config.device_id, nullptr,
                                       this->config.small_block_nbytes, stats)) {
   LOG_IF(INFO, VERBOSE_LEVEL >= 1)
@@ -97,49 +90,4 @@ VMMAllocator::GetAllBlocks() const {
 }
 void VMMAllocator::ResetPeakStats() { stats.ResetPeakStats(); }
 
-void CachingAllocator::Free0(MemBlock *block,
-                             bip::scoped_lock<bip::interprocess_mutex> &lock) {
-  LOG_IF(INFO, VERBOSE_LEVEL >= 1)
-      << config.log_prefix << "Free block " << block;
-  CHECK(CHECK_LEVEL < 1 || CheckStateInternal(lock));
-  if (--block->ref_count > 0) {
-    return;
-  }
-  auto &context = GetStreamContext(block->stream, lock);
-  CHECK(!block->is_free) << block;
-  CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
-  if (block->is_small) {
-    block = context.stream_free_list.PushBlock(process_local_, block);
-    CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
-    block = context.stream_free_list.MaybeMergeAdj(process_local_, block);
-    CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
-  } else {
-    block = context.stream_free_list.PushBlock(process_local_, block);
-    if (auto *prev_entry =
-            context.stream_block_list.GetPrevEntry(process_local_, block);
-        prev_entry && prev_entry->is_small && prev_entry->is_free &&
-        prev_entry->unalloc_pages == 0) {
-      size_t prev_entry_nbytes = prev_entry->nbytes;
-      auto *maybe_merged_entry =
-          context.stream_free_list.MaybeMergeAdj(process_local_, prev_entry);
-      CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
-      if (maybe_merged_entry->nbytes > prev_entry_nbytes) {
-        block = maybe_merged_entry;
-      }
-    }
-    if (auto *next_entry =
-            context.stream_block_list.GetNextEntry(process_local_, block);
-        next_entry && next_entry->is_small && next_entry->is_free &&
-        next_entry->unalloc_pages == 0) {
-      size_t next_entry_nbytes = next_entry->nbytes;
-      auto *maybe_merged_entry =
-          context.stream_free_list.MaybeMergeAdj(process_local_, next_entry);
-      CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
-      if (maybe_merged_entry->nbytes > next_entry_nbytes) {
-        block = maybe_merged_entry;
-      }
-    }
-  }
-  CHECK(CHECK_LEVEL < 1 || CheckStateInternal(lock));
-}
 }

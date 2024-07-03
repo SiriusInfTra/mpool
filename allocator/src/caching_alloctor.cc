@@ -1,4 +1,4 @@
-#include "stats.h"
+#include <stats.h>
 #include <caching_allocator.h>
 #include <mapping_region.h>
 #include <pages.h>
@@ -19,6 +19,24 @@
 
 namespace mpool {
 
+CachingAllocator::CachingAllocator(SharedMemory &shared_memory,
+                                   PagesPool &page_pool,
+                                   CachingAllocatorConfig config,
+                                   bool first_init)
+    : VMMAllocator(shared_memory, page_pool, config, first_init),
+      mapping_region_(
+          shared_memory_, page_pool, belong, this->config.log_prefix,
+          this->config.va_range_scale,
+          [&](int device_id, cudaStream_t cuda_stream, OOMReason reason) {
+            // ReportOOM(device_id, cuda_stream, reason);
+          }),
+      process_local_{page_pool, shared_memory, mapping_region_,
+                     all_block_list_},
+      stream_context_map_(
+          *shared_memory_->find_or_construct<
+              bip_unordered_map<cudaStream_t, shm_ptr<StreamContext>>>(
+              "CA_stream_context_map")(shared_memory_->get_segment_manager())) {}
+
 StreamContext &
 CachingAllocator::GetStreamContext(cudaStream_t cuda_stream,
                                    const bip::scoped_lock<bip_mutex> &lock) {
@@ -26,8 +44,8 @@ CachingAllocator::GetStreamContext(cudaStream_t cuda_stream,
   if (iter == stream_context_map_.end()) {
     LOG(INFO) << "Init Stream context";
     auto *context = new (shared_memory_->allocate(sizeof(StreamContext)))
-        StreamContext{process_local_, page_pool.config.device_id, cuda_stream,
-                      config.small_block_nbytes, stats};
+        StreamContext{process_local_.shared_memory_, page_pool.config.device_id,
+                      cuda_stream, config.small_block_nbytes, stats};
     auto [insert_iter, insert_succ] = stream_context_map_.insert(
         std::make_pair(cuda_stream, shm_ptr{context, shared_memory_}));
     CHECK(insert_succ);
@@ -59,7 +77,6 @@ CachingAllocator::AllocWithContext(size_t nbytes, StreamContext &stream_context,
   CHECK(CHECK_LEVEL < 2 || CheckStateInternal(lock));
   return free_block;
 }
-
 
 MemBlock *
 CachingAllocator::Alloc0(size_t nbytes, cudaStream_t cuda_stream,
@@ -105,11 +122,57 @@ CachingAllocator::Alloc0(size_t nbytes, cudaStream_t cuda_stream,
   return block;
 }
 
+void CachingAllocator::Free0(MemBlock *block,
+                             bip::scoped_lock<bip::interprocess_mutex> &lock) {
+  LOG_IF(INFO, VERBOSE_LEVEL >= 1)
+      << config.log_prefix << "Free block " << block;
+  CHECK(CHECK_LEVEL < 1 || CheckStateInternal(lock));
+  if (--block->ref_count > 0) {
+    return;
+  }
+  auto &context = GetStreamContext(block->stream, lock);
+  CHECK(!block->is_free) << block;
+  CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
+  if (block->is_small) {
+    block = context.stream_free_list.PushBlock(process_local_, block);
+    CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
+    block = context.stream_free_list.MaybeMergeAdj(process_local_, block);
+    CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
+  } else {
+    block = context.stream_free_list.PushBlock(process_local_, block);
+    if (auto *prev_entry =
+            context.stream_block_list.GetPrevEntry(process_local_, block);
+        prev_entry && prev_entry->is_small && prev_entry->is_free &&
+        prev_entry->unalloc_pages == 0) {
+      size_t prev_entry_nbytes = prev_entry->nbytes;
+      auto *maybe_merged_entry =
+          context.stream_free_list.MaybeMergeAdj(process_local_, prev_entry);
+      CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
+      if (maybe_merged_entry->nbytes > prev_entry_nbytes) {
+        block = maybe_merged_entry;
+      }
+    }
+    if (auto *next_entry =
+            context.stream_block_list.GetNextEntry(process_local_, block);
+        next_entry && next_entry->is_small && next_entry->is_free &&
+        next_entry->unalloc_pages == 0) {
+      size_t next_entry_nbytes = next_entry->nbytes;
+      auto *maybe_merged_entry =
+          context.stream_free_list.MaybeMergeAdj(process_local_, next_entry);
+      CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
+      if (maybe_merged_entry->nbytes > next_entry_nbytes) {
+        block = maybe_merged_entry;
+      }
+    }
+  }
+  CHECK(CHECK_LEVEL < 1 || CheckStateInternal(lock));
+}
+
 MemBlock *CachingAllocator::Alloc(size_t nbytes, size_t alignment,
                                   cudaStream_t cuda_stream, size_t flags) {
   bip::scoped_lock lock{shared_memory_.GetMutex()};
-  return Alloc0(nbytes, cuda_stream,
-                flags & VMMAllocator::ALLOC_TRY_EXPAND_VA, lock);
+  return Alloc0(nbytes, cuda_stream, flags & VMMAllocator::ALLOC_TRY_EXPAND_VA,
+                lock);
 }
 
 MemBlock *CachingAllocator::Realloc(MemBlock *block, size_t nbytes,
@@ -169,16 +232,7 @@ void CachingAllocator::EmptyCache() {
   }
   CHECK(CHECK_LEVEL < 1 || CheckStateInternal(lock));
 };
-CachingAllocator::CachingAllocator(SharedMemory &shared_memory,
-                                   PagesPool &page_pool,
-                                   CachingAllocatorConfig config,
-                                   bool first_init)
-    : VMMAllocator(shared_memory, page_pool, config, first_init),
-      stream_context_map_(
-          *shared_memory_->find_or_construct<
-              bip_unordered_map<cudaStream_t, shm_ptr<StreamContext>>>(
-              "CA_stream_context_map")(shared_memory_->get_segment_manager())) {
-}
+
 
 void CachingAllocator::DumpState() {
   auto now = std::chrono::system_clock::now();
@@ -237,7 +291,6 @@ bool CachingAllocator::CheckStateInternal(
   return ret;
 }
 
-
 void CachingAllocator::ReportOOM(int device_id, cudaStream_t cuda_stream,
                                  OOMReason reason) {
   for (auto *oom_observer : oom_observers_) {
@@ -289,6 +342,5 @@ void CachingAllocator::ReportOOM(int device_id, cudaStream_t cuda_stream,
   }
   LOG(FATAL) << config.log_prefix << "Abort.";
 }
-
 
 } // namespace mpool

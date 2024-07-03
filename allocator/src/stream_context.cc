@@ -145,6 +145,12 @@ MemBlock *StreamFreeList::PopBlock(ProcessLocalData &local, bool is_small,
     return nullptr;
   }
   auto *block = iter->second.ptr(local.shared_memory_);
+  if (block->nbytes >= 18446744073709551432UL) {
+    LOG(INFO) << free_list.size();
+    LOG(INFO) << free_list.begin()->first;
+    LOG(INFO) << *free_list.begin()->second.ptr(local.shared_memory_);
+  }
+  CHECK(block->nbytes < 18446744073709551432UL);
   if (block->unalloc_pages > 0 && find_optimal_retry > 0) {
     // try to minimize the number of unallocated pages
     auto *optimal_block = block;
@@ -217,7 +223,7 @@ MemBlock *StreamFreeList::PushBlock(ProcessLocalData &local, MemBlock *block) {
   if (auto prev_block = stream_block_list_ptr->GetPrevEntry(local, block);
       prev_block && prev_block->is_free &&
       prev_block->is_small == block->is_small &&
-      prev_block->unalloc_pages == 0 && prev_block->stream == current_stream_) {
+      prev_block->unalloc_pages == 0 && prev_block->stream == current_stream_ && local.mapping_region_.CanMerge(prev_block, block)) {
     // LOG(INFO)  << "is small " << block->is_small << "free_list " <<
     // free_list.size();
     free_list.erase(prev_block->iter_free_block_list);
@@ -226,7 +232,7 @@ MemBlock *StreamFreeList::PushBlock(ProcessLocalData &local, MemBlock *block) {
   if (auto next_block = stream_block_list_ptr->GetNextEntry(local, block);
       next_block && next_block->is_free &&
       next_block->is_small == block->is_small &&
-      next_block->unalloc_pages == 0 && next_block->stream == current_stream_) {
+      next_block->unalloc_pages == 0 && next_block->stream == current_stream_ && local.mapping_region_.CanMerge(block, next_block)) {
     // LOG(INFO)  << "is small " << block->is_small << "free_list " <<
     // free_list.size();
     free_list.erase(next_block->iter_free_block_list);

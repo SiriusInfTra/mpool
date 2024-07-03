@@ -47,37 +47,25 @@ public:
 protected:
   SharedMemory &shared_memory_;
   CachingAllocatorStats &stats;
-  DynamicMappingRegion mapping_region_;
   bip_list<shm_ptr<MemBlock>> &all_block_list_;
-  ProcessLocalData process_local_;
+
 
   StreamContext &global_stream_context_;
 
   std::vector<OOMObserver *> oom_observers_;
 
-
-
   bool CheckStats();
-
 
 public:
   VMMAllocator(SharedMemory &shared_memory, PagesPool &page_pool,
                CachingAllocatorConfig config, bool first_init);
 
   ~VMMAllocator();
-
-  std::byte *GetBasePtr() const override {
-    return mapping_region_.GetBasePtr();
-  }
-
-
-
   size_t GetDeviceFreeNbytes() const;
 
   void AddOOMObserver(OOMObserver *observer);
 
   void RemoveOOMObserver(OOMObserver *observer);
-
 
   const CachingAllocatorStats &GetStats() const { return stats; }
 
@@ -86,6 +74,5 @@ public:
 
   void ResetPeakStats();
 };
-
 
 } // namespace mpool

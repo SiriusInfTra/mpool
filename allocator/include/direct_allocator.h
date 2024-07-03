@@ -1,5 +1,6 @@
 #pragma once
 
+#include "mapping_region.h"
 #include "mem_block.h"
 #include "pages_pool.h"
 #include "util.h"
@@ -12,11 +13,25 @@ namespace mpool {
 using DirectAllocatorConfig = CachingAllocatorConfig;
 
 class DirectAllocator : public VMMAllocator {
+private:
+  StaticMappingRegion mapping_region_;
+  ProcessLocalData process_local_;
+
 public:
   DirectAllocator(SharedMemory &shared_memory, PagesPool &page_pool,
-                  DirectAllocatorConfig config, bool first_init): VMMAllocator(shared_memory, page_pool, config, first_init) {
-                    
-                  }
+                  DirectAllocatorConfig config, bool first_init)
+      : VMMAllocator(shared_memory, page_pool, config, first_init),
+        mapping_region_(
+            shared_memory_, page_pool, belong, this->config.log_prefix,
+            this->config.va_range_scale,
+            [&](int device_id, cudaStream_t cuda_stream, OOMReason reason) {
+              // ReportOOM(device_id, cuda_stream, reason);
+            }),
+        process_local_{page_pool, shared_memory, mapping_region_,
+                       all_block_list_} {
+    auto *mem_block = global_stream_context_.stream_block_list.CreateEntryExpandVA(process_local_, mapping_region_.GetVARangeNBytes());
+    global_stream_context_.stream_free_list.PushBlock(process_local_, mem_block);
+                       }
   virtual ~DirectAllocator() = default;
   virtual MemBlock *Alloc(size_t request_nbytes, size_t alignment,
                           cudaStream_t cuda_stream, size_t flags) override {
@@ -27,11 +42,17 @@ public:
     if (request_nbytes >= page_pool.config.page_nbytes) {
       alignment = std::max(alignment, page_pool.config.page_nbytes);
     }
+    if (request_nbytes == 19429920) {
+      size_t debug_here = 555;
+      LOG(INFO) << debug_here;
+    }
     request_nbytes = (request_nbytes + alignment - 1) / alignment * alignment;
+
     if (request_nbytes < page_pool.config.page_nbytes) {
       auto *mem_block = global_stream_context_.stream_free_list.PopBlock(
           process_local_, true, request_nbytes, 0);
       if (mem_block != nullptr) {
+        CHECK_EQ(mem_block->nbytes, request_nbytes);
         return mem_block;
       } else {
         std::vector<index_t> pages_index;
@@ -56,6 +77,7 @@ public:
           mem_block = global_stream_context_.stream_free_list.PopBlock(
               process_local_, true, request_nbytes, 0);
         }
+        CHECK_EQ(mem_block->nbytes, request_nbytes);
         return mem_block;
       }
     } else {
@@ -76,8 +98,10 @@ public:
       }
       ptrdiff_t addr_offset = page_begin * page_pool.config.page_nbytes;
       size_t nbytes = pages_cnt * page_pool.config.page_nbytes;
-      return global_stream_context_.stream_free_list.PopBlock(
+      auto *mem_block =  global_stream_context_.stream_free_list.PopBlock(
           process_local_, false, addr_offset, nbytes);
+      CHECK_EQ(mem_block->nbytes, request_nbytes);
+      return mem_block;
     }
   }
   virtual MemBlock *Realloc(MemBlock *block, size_t nbytes,
@@ -100,29 +124,18 @@ public:
         page_pool.FreePages(pages, belong, lock);
       }
     } else {
-      index_t range_l = mapping_region_.ByteOffsetToIndex(block->addr_offset);
-      index_t range_r = mapping_region_.ByteOffsetToIndex(
-                            block->addr_offset + block->nbytes - 1 +
-                            page_pool.config.page_nbytes - 1) +
-                        1;
       block = global_stream_context_.stream_free_list.PushBlock(
           process_local_, const_cast<MemBlock *>(block));
-      range_l = std::max(range_l,
-                         mapping_region_.ByteOffsetToIndex(block->addr_offset));
-      range_r = std::min(range_r, mapping_region_.ByteOffsetToIndex(
-                                      block->addr_offset + block->nbytes - 1) +
-                                      1);
-      std::vector<index_t> pages;
-      for (size_t i = range_l; i < range_r; ++i) {
-        if (belong == *page_pool.PagesView()[i].belong) {
-          pages.push_back(i);
-        }
-      }
-      {
-        auto lock = page_pool.Lock();
-        page_pool.FreePages(pages, belong, lock);
+      if (block->nbytes == mapping_region_.mem_block_nbytes) {
+        block = global_stream_context_.stream_free_list.PopBlock(process_local_, const_cast<MemBlock *>(block));
+        stats.SetBlockIsSmall(const_cast<MemBlock *>(block), false);
+        global_stream_context_.stream_free_list.PushBlock(process_local_, const_cast<MemBlock *>(block));
       }
     }
+  }
+
+  std::byte *GetBasePtr() const override {
+    return mapping_region_.GetBasePtr();
   }
 };
 } // namespace mpool

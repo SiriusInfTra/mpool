@@ -5,6 +5,8 @@
 namespace mpool {
 class CachingAllocator : public VMMAllocator {
 private:
+  DynamicMappingRegion mapping_region_;
+  ProcessLocalData process_local_;
   bip_unordered_map<cudaStream_t, shm_ptr<StreamContext>> &stream_context_map_;
 
   StreamContext &GetStreamContext(cudaStream_t cuda_stream,
@@ -29,6 +31,10 @@ public:
   MemBlock *Realloc(MemBlock *block, size_t nbytes, cudaStream_t cuda_stream,
                     size_t flags = 0) override;
   void Free(const MemBlock *block, size_t flags = 0) override;
+
+  std::byte *GetBasePtr() const override {
+    return mapping_region_.GetBasePtr();
+  }
 
   MemBlock *ReceiveMemBlock(shm_ptr<MemBlock> handle);
 

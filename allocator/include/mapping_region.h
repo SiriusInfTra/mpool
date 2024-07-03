@@ -96,6 +96,16 @@ public:
     return CalculateUnallocFlags(mem_block->addr_offset, mem_block->nbytes);
   }
 
+
+  /**
+   * Determines whether two adjacent memory blocks can be merged together.
+   *
+   * @param block_a The first memory block.
+   * @param block_b The second memory block.
+   * @return True if the memory blocks can be merged, false otherwise.
+   */
+  virtual bool CanMerge(const MemBlock *block_a, const MemBlock *block_b) = 0;
+
   /**
    * Calculates the index corresponding to a given byte offset.
    *
@@ -149,6 +159,8 @@ public:
 
   void
   EmptyCacheAndUpdateFlags(bip_list<shm_ptr<MemBlock>> &block_list) override;
+
+  bool CanMerge(const MemBlock *block_a, const MemBlock *block_b) override;
 };
 
 class StaticMappingRegion : public IMappingRegion {
@@ -161,7 +173,7 @@ public:
           ReportOOM)
       : IMappingRegion(shared_memory, page_pool, belong, log_prefix,
                        va_range_scale, ReportOOM) {
-    CHECK_EQ(va_range_scale, 1);
+    // CHECK_EQ(va_range_scale, 1);
     for (size_t k = 0; k < mem_block_num; k++) {
       self_page_table_.push_back(&page_pool.PagesView()[k]);
     }   
@@ -177,6 +189,8 @@ public:
 
   void
   EmptyCacheAndUpdateFlags(bip_list<shm_ptr<MemBlock>> &block_list) override {}
+
+  bool CanMerge(const MemBlock *block_a, const MemBlock *block_b) override;
 };
 
 struct ProcessLocalData {

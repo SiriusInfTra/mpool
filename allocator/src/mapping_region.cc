@@ -276,4 +276,13 @@ int IMappingRegion::CalculateUnallocFlags(ptrdiff_t addr_offset,
       << ByteDisplay(nbytes);
   return unalloc_pages;
 }
+bool StaticMappingRegion::CanMerge(const MemBlock *block_a,
+                                   const MemBlock *block_b) {
+  return !block_a->is_small || ByteOffsetToIndex(block_a->addr_offset) ==
+         ByteOffsetToIndex(block_b->addr_offset + block_b->nbytes - 1);
+};
+bool DynamicMappingRegion::CanMerge(const MemBlock *block_a,
+                                    const MemBlock *block_b) {
+  return true;
+};
 } // namespace mpool

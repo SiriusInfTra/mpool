@@ -136,6 +136,7 @@ public:
     auto *stat = stats_.ptr(local.shared_memory_);
     stat->SetBlockFree(mem_block, false);
     free_list.erase(mem_block->iter_free_block_list);
+    return mem_block;
   }
   
 

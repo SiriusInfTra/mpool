@@ -2,6 +2,7 @@
 #include <iterator>
 #include <stream_context.h>
 
+#include <tuple>
 #include <unordered_set>
 
 namespace mpool {
@@ -38,6 +39,9 @@ MemBlock *StreamBlockList::CreateEntryExpandVA(ProcessLocalData &local,
       local.all_block_list_.insert(local.all_block_list_.cend(), handle);
   block->iter_stream_block_list =
       stream_block_list_.insert(stream_block_list_.cend(), handle);
+  auto [iter, succ] = local.all_block_map_.insert(std::make_pair(block->addr_offset, handle));
+  CHECK(succ);
+  block->iter_all_block_map = iter;
 
   auto *stats = stats_.ptr(local.shared_memory_);
   stats->CreateBlock(block);
@@ -83,7 +87,9 @@ MemBlock *StreamBlockList::SplitBlock(ProcessLocalData &local,
   insert_after_entry->iter_stream_block_list =
       stream_block_list_.insert(std::next(origin_entry->iter_stream_block_list),
                                 insert_after_entry_handle);
-
+  bool succ;
+  std::tie(insert_after_entry->iter_all_block_map, succ) = local.all_block_map_.insert(std::make_pair(insert_after_entry->addr_offset, insert_after_entry_handle));
+  CHECK(succ);
   origin_entry->nbytes = remain;
 
   if (origin_entry->unalloc_pages > 0) {
@@ -116,6 +122,7 @@ MemBlock *StreamBlockList::MergeMemEntry(ProcessLocalData &local,
   }
 
   local.all_block_list_.erase(secound_block->iter_all_block_list);
+  local.all_block_map_.erase(secound_block->iter_all_block_map);
   stream_block_list_.erase(secound_block->iter_stream_block_list);
   memset(secound_block, 0x77 /* for debug */, sizeof(MemBlock));
   local.shared_memory_->deallocate(secound_block);

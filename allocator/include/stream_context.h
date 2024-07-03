@@ -1,5 +1,6 @@
 #pragma once
 #include <cstddef>
+#include <iterator>
 #include <stats.h>
 #include <mapping_region.h>
 #include <mem_block.h>
@@ -51,6 +52,30 @@ public:
 
   MemBlock *MergeMemEntry(ProcessLocalData &local, MemBlock *first_block,
                           MemBlock *secound_block);
+  
+  MemBlock *SearchBlock(ProcessLocalData &local, ptrdiff_t addr_offset) {
+    if (local.all_block_map_.empty()) {
+      return nullptr;
+    }
+    auto iter = local.all_block_map_.lower_bound(addr_offset);
+    if (iter == local.all_block_map_.cend()) {
+      auto *mem_block = std::prev(iter)->second.ptr(local.shared_memory_);
+      if (mem_block->addr_offset + static_cast<ptrdiff_t>(mem_block->nbytes) - 1 >= addr_offset) {
+        return mem_block;
+      } else {
+        return nullptr;
+      }
+    } else {
+      auto *mem_block = iter->second.ptr(local.shared_memory_);
+      if (mem_block->addr_offset == addr_offset) {
+        return mem_block;
+      } else if (mem_block->iter_all_block_map != local.all_block_map_.cbegin()) {
+        return std::prev(iter)->second.ptr(local.shared_memory_);
+      } else {
+        return nullptr;
+      }
+    }
+  }
 
   std::pair<bip_list<shm_ptr<MemBlock>>::const_iterator,
             bip_list<shm_ptr<MemBlock>>::const_iterator>
@@ -110,36 +135,13 @@ public:
   MemBlock *PopBlock(ProcessLocalData &local, bool is_small, ptrdiff_t addr_offset, size_t nbytes) {
     auto free_list = free_block_list_[is_small];
     
-    // TODO log(n) algorithm
-    MemBlock *mem_block = nullptr;
-    for (auto iter = free_list.lower_bound(nbytes); iter != free_list.end(); ++iter) {
-      auto *iter_block = iter->second.ptr(local.shared_memory_);
-      if (iter_block->addr_offset <= addr_offset && iter_block->addr_offset + iter_block->nbytes >= addr_offset + nbytes) {
-        mem_block = iter_block;
-        LOG(INFO) << *mem_block;
-        break;
-      }
-    }
-    if (mem_block == nullptr) {
-      
-      stream_block_list_.ptr(local.shared_memory_)->DumpStreamBlockList(local);
-      DumpFreeBlockList(local, false);
-      DumpFreeBlockList(local, true);
-      for (auto iter = free_list.lower_bound(nbytes); iter != free_list.end(); ++iter) {
-        auto *iter_block = iter->second.ptr(local.shared_memory_);
-        LOG(INFO) << *iter_block;
-        if (iter_block->addr_offset <= addr_offset && iter_block->addr_offset + iter_block->nbytes >= addr_offset + nbytes) {
-          mem_block = iter_block;
-
-          break;
-        }
-      }
-    }
-
-    CHECK(mem_block != nullptr);
-    mem_block = PopBlock(local, mem_block);
     auto *stream_block_list = stream_block_list_.ptr(local.shared_memory_);
+    auto *mem_block = stream_block_list->SearchBlock(local, addr_offset);
     CHECK(mem_block != nullptr);
+    CHECK(mem_block->is_free);
+    mem_block = PopBlock(local, mem_block);
+    CHECK_LE(mem_block->addr_offset, addr_offset);
+    CHECK_GE(mem_block->addr_offset + mem_block->nbytes, addr_offset + nbytes);
     if (mem_block->addr_offset < addr_offset) {
       auto remain = addr_offset - mem_block->addr_offset;
       auto *next_mem_block = stream_block_list->SplitBlock(local, mem_block, remain);

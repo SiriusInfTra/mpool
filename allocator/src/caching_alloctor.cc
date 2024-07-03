@@ -31,7 +31,7 @@ CachingAllocator::CachingAllocator(SharedMemory &shared_memory,
             ReportOOM(cuda_stream, reason, true);
           }),
       process_local_{page_pool, shared_memory, mapping_region_,
-                     all_block_list_},
+                     all_block_list_, all_block_map_},
       stream_context_map_(
           *shared_memory_->find_or_construct<
               bip_unordered_map<cudaStream_t, shm_ptr<StreamContext>>>(

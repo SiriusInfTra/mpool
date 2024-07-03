@@ -22,9 +22,14 @@ struct MemBlock {
   bool is_small;
   int32_t ref_count;
 
+
+  // For quickly finding adjacent blocks.
   bip_list<shm_ptr<MemBlock>>::iterator iter_all_block_list;
-  bip_list<shm_ptr<MemBlock>>::iterator iter_stream_block_list; // caching allocator
-  // bip_map<ptrdiff_t, shm_ptr<MemBlock>>::iterator iter_all_block_map; // direct allocator
+  // For quickly finding prev/next block in the same stream.
+  bip_list<shm_ptr<MemBlock>>::iterator iter_stream_block_list;
+  // For quickly finding the block by address. 
+  bip_map<ptrdiff_t, shm_ptr<MemBlock>>::iterator iter_all_block_map;
+  // For quickly finding the block in freelist by nbytes.
   bip_multimap<size_t, shm_ptr<MemBlock>>::iterator iter_free_block_list;
 };
 

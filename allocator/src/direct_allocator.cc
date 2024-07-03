@@ -14,7 +14,7 @@ DirectAllocator::DirectAllocator(SharedMemory &shared_memory,
             ReportOOM(cuda_stream, reason, true);
           }),
       process_local_{page_pool, shared_memory, mapping_region_,
-                     all_block_list_} {
+                     all_block_list_, all_block_map_} {
   auto *mem_block =
       global_stream_context_.stream_block_list.CreateEntryExpandVA(
           process_local_, mapping_region_.GetVARangeNBytes());

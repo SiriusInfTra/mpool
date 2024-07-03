@@ -15,20 +15,22 @@
 #include <glog/logging.h>
 
 namespace mpool {
-VMMAllocator::VMMAllocator(SharedMemory &shared_memory,
-                                   PagesPool &page_pool,
-                                   CachingAllocatorConfig config,
-                                   bool first_init)
+VMMAllocator::VMMAllocator(SharedMemory &shared_memory, PagesPool &page_pool,
+                           CachingAllocatorConfig config, bool first_init)
     : belong(
           page_pool.GetBelongRegistry().GetOrCreateBelong(config.belong_name)),
       config(std::move(config)), page_pool(page_pool),
       shared_memory_(shared_memory),
       stats(*shared_memory_->find_or_construct<CachingAllocatorStats>(
           "CA_stats")()),
-      
+
       all_block_list_(
           *shared_memory_->find_or_construct<bip_list<shm_ptr<MemBlock>>>(
               "CA_all_block_list")(shared_memory_->get_segment_manager())),
+      all_block_map_(
+          *shared_memory_
+               ->find_or_construct<bip_map<ptrdiff_t, shm_ptr<MemBlock>>>(
+                   "CA_all_block_map")(shared_memory_->get_segment_manager())),
       global_stream_context_(*shared_memory_->find_or_construct<StreamContext>(
           "CA_global_stream_context")(shared_memory_,
                                       page_pool.config.device_id, nullptr,
@@ -41,7 +43,6 @@ VMMAllocator::~VMMAllocator() {
   LOG_IF(INFO, VERBOSE_LEVEL >= 1)
       << config.log_prefix << "Release VMMAllocator";
 }
-
 
 bool VMMAllocator::CheckStats() {
   CachingAllocatorStats stats;
@@ -87,4 +88,4 @@ VMMAllocator::GetAllBlocks() const {
 }
 void VMMAllocator::ResetPeakStats() { stats.ResetPeakStats(); }
 
-}
+} // namespace mpool

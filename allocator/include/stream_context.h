@@ -119,6 +119,7 @@ public:
         break;
       }
     }
+    CHECK(mem_block != nullptr);
     mem_block = PopBlock(local, mem_block);
     auto *stream_block_list = stream_block_list_.ptr(local.shared_memory_);
     CHECK(mem_block != nullptr);

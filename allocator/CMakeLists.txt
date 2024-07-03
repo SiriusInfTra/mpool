@@ -1,8 +1,10 @@
 set(ALLOCATOR_SRC
     src/caching_alloctor.cc
     src/direct_allocator.cc
+    src/vmm_allocator.cc
     src/mapping_region.cc
     src/stream_context.cc
+
 )
 
 add_library(allocator SHARED ${ALLOCATOR_SRC})

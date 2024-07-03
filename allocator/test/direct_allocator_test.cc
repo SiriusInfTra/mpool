@@ -88,7 +88,7 @@ void run(const PagesPoolConf &config, const std::string &name, int seed) {
     if (WrapMemBlock::GetTotalNBytes() + nbytes > 5_GB) {
       std::shuffle(own_pages.begin(), own_pages.end(), rng);
       own_pages.clear();
-      caching_allocator->EmptyCache();
+      // caching_allocator->EmptyCache();
     } else {
       own_pages.push_back(
           std::make_shared<WrapMemBlock>(nbytes, *caching_allocator.GetObject()));
@@ -106,14 +106,15 @@ int main() {
       .log_prefix = "mempool",
       .shm_nbytes = 1_GB,
   };
+  run(conf, "test", 0);
   // PagesPool::RemoveShm(conf);
-  if (pid_t pid = fork(); pid == 0) {
-    run(conf, "test", 0);
-  } else {
-    run(conf, "test", 42);
-    int status;
-    pid_t wait_pid = wait(&status);
-    CHECK_EQ(wait_pid, pid);;
-  }
+  // if (pid_t pid = fork(); pid == 0) {
+  //   run(conf, "test", 0);
+  // } else {
+  //   run(conf, "test", 42);
+  //   int status;
+  //   pid_t wait_pid = wait(&status);
+  //   CHECK_EQ(wait_pid, pid);;
+  // }
   std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 }

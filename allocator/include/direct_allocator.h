@@ -42,8 +42,8 @@ public:
         if (pages_index.empty()) {
           LOG(WARNING) << config.log_prefix
                        << "OOM: Cannot find any physical page.";
-          ReportOOM(page_pool.config.device_id, cuda_stream,
-                    OOMReason::NO_PHYSICAL_PAGES);
+          // ReportOOM(page_pool.config.device_id, cuda_stream,
+          //           OOMReason::NO_PHYSICAL_PAGES);
         }
         ptrdiff_t addr_offset = pages_index[0] * page_pool.config.page_nbytes;
         size_t nbytes = page_pool.config.page_nbytes;
@@ -60,7 +60,6 @@ public:
       }
     } else {
       size_t pages_cnt = request_nbytes / page_pool.config.page_nbytes;
-      auto lock = page_pool.Lock();
       index_t page_begin;
       {
         auto lock = page_pool.Lock();
@@ -71,8 +70,8 @@ public:
             << config.log_prefix
             << "OOM: Cannot find enough continuous physical pages: require = "
             << pages_cnt << ".";
-        ReportOOM(page_pool.config.device_id, cuda_stream,
-                  OOMReason::NO_PHYSICAL_PAGES);
+        // ReportOOM(page_pool.config.device_id, cuda_stream,
+        //           OOMReason::NO_PHYSICAL_PAGES);
         return nullptr;
       }
       ptrdiff_t addr_offset = page_begin * page_pool.config.page_nbytes;

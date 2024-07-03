@@ -1,3 +1,4 @@
+#include "vmm_allocator.h"
 #include <stats.h>
 #include <caching_allocator.h>
 #include <mapping_region.h>
@@ -9,7 +10,6 @@
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
-#include <limits>
 #include <mem_block.h>
 #include <utility>
 
@@ -28,7 +28,7 @@ CachingAllocator::CachingAllocator(SharedMemory &shared_memory,
           shared_memory_, page_pool, belong, this->config.log_prefix,
           this->config.va_range_scale,
           [&](int device_id, cudaStream_t cuda_stream, OOMReason reason) {
-            // ReportOOM(device_id, cuda_stream, reason);
+            ReportOOM(cuda_stream, reason, true);
           }),
       process_local_{page_pool, shared_memory, mapping_region_,
                      all_block_list_},
@@ -115,8 +115,7 @@ CachingAllocator::Alloc0(size_t nbytes, cudaStream_t cuda_stream,
                  << "OOM: Cannot find free memory block, tried_global_stream = "
                  << tried_global_stream
                  << ", tried_expand_va = " << tried_expand_va << ".";
-    ReportOOM(page_pool.config.device_id, cuda_stream,
-              OOMReason::NO_MEMORY_BLOCK);
+    ReportOOM(cuda_stream, OOMReason::NO_MEMORY_BLOCK, true);
   }
   CHECK(CHECK_LEVEL < 1 || CheckStateInternal(lock));
   return block;
@@ -291,56 +290,13 @@ bool CachingAllocator::CheckStateInternal(
   return ret;
 }
 
-void CachingAllocator::ReportOOM(int device_id, cudaStream_t cuda_stream,
-                                 OOMReason reason) {
-  for (auto *oom_observer : oom_observers_) {
-    (*oom_observer)(device_id, cuda_stream, reason);
+void CachingAllocator::ReportOOM(cudaStream_t cuda_stream,
+                                 OOMReason reason, bool force_abort) {
+  VMMAllocator::ReportOOM(cuda_stream, reason);
+  for (auto &&[_, handle] : stream_context_map_) {
+    PrintStreamStats(*handle.ptr(shared_memory_));
   }
-  for (auto &&[stream, handle] : stream_context_map_) {
-    for (auto &&[is_small, label] :
-         {std::make_pair(false, "large"), std::make_pair(true, "small")}) {
-      LOG(INFO) << "~~~~~~~~~~ Stream " << stream << " (" << label
-                << ") used / free ~~~~~~~~~~";
-      auto stream_context = handle.ptr(shared_memory_);
-      std::array<size_t, 2> cnt = {0, 0}, sum = {0, 0}, max = {0, 0},
-                            min = {std::numeric_limits<size_t>::max(),
-                                   std::numeric_limits<size_t>::max()},
-                            avg; // used / free
-      for (auto [iter, end] = stream_context->stream_block_list.Iterators();
-           iter != end; ++iter) {
-        auto *block = iter->ptr(shared_memory_);
-        if (block->is_small != is_small) {
-          continue;
-        }
-        cnt[block->is_free] += 1;
-        sum[block->is_free] += block->nbytes;
-        max[block->is_free] = std::max(max[block->is_free], block->nbytes);
-        min[block->is_free] = std::min(min[block->is_free], block->nbytes);
-      }
-      for (bool is_free : {false, true}) {
-        if (sum[is_free] == 0) {
-          avg[is_free] = 0;
-        } else {
-          avg[is_free] = sum[is_free] / cnt[is_free];
-        }
-      }
-      for (auto &min_value : min) {
-        if (min_value == std::numeric_limits<size_t>::max()) {
-          min_value = 0;
-        }
-      }
-      LOG(INFO) << "cnt: " << cnt[0] << " / " << cnt[1];
-      LOG(INFO) << "sum: " << ByteDisplay(sum[0]) << " / "
-                << ByteDisplay(sum[1]);
-      LOG(INFO) << "avg: " << ByteDisplay(avg[0]) << " / "
-                << ByteDisplay(avg[1]);
-      LOG(INFO) << "max: " << ByteDisplay(max[0]) << " / "
-                << ByteDisplay(max[1]);
-      LOG(INFO) << "min: " << ByteDisplay(min[0]) << " / "
-                << ByteDisplay(min[1]);
-    }
-  }
-  LOG(FATAL) << config.log_prefix << "Abort.";
+  LOG_IF(FATAL, force_abort) << config.log_prefix << "Abort.";
 }
 
 } // namespace mpool

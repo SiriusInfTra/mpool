@@ -44,6 +44,6 @@ public:
 
   void DumpState();
 
-  void ReportOOM(int device_id, cudaStream_t cuda_stream, OOMReason reason);
+  void ReportOOM(cudaStream_t cuda_stream, OOMReason reason, bool force_abort) override;
 };
 } // namespace mpool

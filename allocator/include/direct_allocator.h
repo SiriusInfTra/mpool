@@ -25,7 +25,7 @@ public:
             shared_memory_, page_pool, belong, this->config.log_prefix,
             this->config.va_range_scale,
             [&](int device_id, cudaStream_t cuda_stream, OOMReason reason) {
-              // ReportOOM(device_id, cuda_stream, reason);
+              ReportOOM(cuda_stream, reason, true);
             }),
         process_local_{page_pool, shared_memory, mapping_region_,
                        all_block_list_} {
@@ -63,8 +63,8 @@ public:
         if (pages_index.empty()) {
           LOG(WARNING) << config.log_prefix
                        << "OOM: Cannot find any physical page.";
-          // ReportOOM(page_pool.config.device_id, cuda_stream,
-          //           OOMReason::NO_PHYSICAL_PAGES);
+          ReportOOM(cuda_stream,
+                    OOMReason::NO_PHYSICAL_PAGES, true);
         }
         ptrdiff_t addr_offset = pages_index[0] * page_pool.config.page_nbytes;
         size_t nbytes = page_pool.config.page_nbytes;
@@ -92,8 +92,8 @@ public:
             << config.log_prefix
             << "OOM: Cannot find enough continuous physical pages: require = "
             << pages_cnt << ".";
-        // ReportOOM(page_pool.config.device_id, cuda_stream,
-        //           OOMReason::NO_PHYSICAL_PAGES);
+        ReportOOM(cuda_stream,
+                  OOMReason::NO_PHYSICAL_PAGES, true);
         return nullptr;
       }
       ptrdiff_t addr_offset = page_begin * page_pool.config.page_nbytes;
@@ -137,5 +137,12 @@ public:
   std::byte *GetBasePtr() const override {
     return mapping_region_.GetBasePtr();
   }
+
+  void ReportOOM(cudaStream_t cuda_stream,
+                                OOMReason reason, bool force_abort) override {
+  VMMAllocator::ReportOOM(cuda_stream, reason, force_abort);
+  PrintStreamStats(global_stream_context_);
+  LOG_IF(FATAL, force_abort) << config.log_prefix << "Abort.";
+}
 };
 } // namespace mpool

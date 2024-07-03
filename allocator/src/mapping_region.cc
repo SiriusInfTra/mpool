@@ -285,4 +285,34 @@ bool DynamicMappingRegion::CanMerge(const MemBlock *block_a,
                                     const MemBlock *block_b) {
   return true;
 };
+StaticMappingRegion::StaticMappingRegion(
+    SharedMemory &shared_memory, PagesPool &page_pool, Belong belong,
+    std::string log_prefix, size_t va_range_scale,
+    std::function<void(int device_id, cudaStream_t cuda_stream,
+                       OOMReason reason)>
+        ReportOOM)
+    : IMappingRegion(shared_memory, page_pool, belong, log_prefix,
+                     va_range_scale, ReportOOM) {
+  if (va_range_scale > 1) {
+    LOG(WARNING) << log_prefix
+                 << "va_range_scale > 1 is not supported for static mapping "
+                    "region, so reset to 1.";
+  }
+  for (size_t k = 0; k < mem_block_num; k++) {
+    self_page_table_.push_back(&page_pool.PagesView()[k]);
+  }
+  if (shared_global_mappings_.empty()) {
+    for (size_t k = 0; k < mem_block_num; k++) {
+      shared_global_mappings_.push_back(k);
+    }
+  }
+}
+DynamicMappingRegion::DynamicMappingRegion(
+    SharedMemory &shared_memory, PagesPool &page_pool, Belong belong,
+    std::string log_prefix, size_t va_range_scale,
+    std::function<void(int device_id, cudaStream_t cuda_stream,
+                       OOMReason reason)>
+        ReportOOM)
+    : IMappingRegion(shared_memory, page_pool, belong, log_prefix,
+                     va_range_scale, ReportOOM) {}
 } // namespace mpool

@@ -96,7 +96,6 @@ public:
     return CalculateUnallocFlags(mem_block->addr_offset, mem_block->nbytes);
   }
 
-
   /**
    * Determines whether two adjacent memory blocks can be merged together.
    *
@@ -150,9 +149,7 @@ public:
       std::string log_prefix, size_t va_range_scale,
       std::function<void(int device_id, cudaStream_t cuda_stream,
                          OOMReason reason)>
-          ReportOOM)
-      : IMappingRegion(shared_memory, page_pool, belong, log_prefix,
-                       va_range_scale, ReportOOM) {}
+          ReportOOM);
 
   void AllocMappingsAndUpdateFlags(
       MemBlock *block, bip_list<shm_ptr<MemBlock>> &all_block_list) override;
@@ -170,22 +167,9 @@ public:
       std::string log_prefix, size_t va_range_scale,
       std::function<void(int device_id, cudaStream_t cuda_stream,
                          OOMReason reason)>
-          ReportOOM)
-      : IMappingRegion(shared_memory, page_pool, belong, log_prefix,
-                       va_range_scale, ReportOOM) {
-    // CHECK_EQ(va_range_scale, 1);
-    for (size_t k = 0; k < mem_block_num; k++) {
-      self_page_table_.push_back(&page_pool.PagesView()[k]);
-    }   
-    if (shared_global_mappings_.empty()) {
-      for (size_t k = 0; k < mem_block_num; k++) {
-        shared_global_mappings_.push_back(k);
-      }
-    }
-  }
+          ReportOOM);
   void AllocMappingsAndUpdateFlags(
-      MemBlock *block, bip_list<shm_ptr<MemBlock>> &all_block_list) override {
-  }
+      MemBlock *block, bip_list<shm_ptr<MemBlock>> &all_block_list) override {}
 
   void
   EmptyCacheAndUpdateFlags(bip_list<shm_ptr<MemBlock>> &block_list) override {}

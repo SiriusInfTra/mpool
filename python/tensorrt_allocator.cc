@@ -22,7 +22,7 @@ void *TensorRTAllocator::reallocate(void *const baseAddr, uint64_t alignment,
   }
   auto *mem_block = iter->second;
   auto *resized_block =
-      allocator->Realloc(mem_block, newSize, mem_block->stream, false);
+      allocator->Realloc(mem_block, newSize, alignment, mem_block->stream, 0);
   if (resized_block == nullptr) {
     return nullptr;
   }
@@ -35,7 +35,6 @@ void *TensorRTAllocator::allocateAsync(uint64_t const size,
                                        nvinfer1::AllocatorFlags const flags,
                                        cudaStream_t cuda_stream) noexcept {
   // CHECK_EQ(flags, 0);
-  CHECK_LE(alignment, 512); /* current alignment is fixed */
   int device;
   CUDA_CALL(cudaGetDevice(&device));
   auto &allocator = allocators_.at(device);

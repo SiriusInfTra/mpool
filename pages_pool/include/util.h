@@ -24,6 +24,7 @@
     } \
   } while (0);
 
+
 namespace mpool {
 
 using nbytes_t = size_t;
@@ -37,6 +38,15 @@ inline std::string ByteDisplay(size_t nbytes) {
      << static_cast<double>(nbytes) / 1024 / 1024 << "MB (" << nbytes << " Bytes)";
   return ss.str();
 }
+
+inline bool IsPower2(size_t nbytes) {
+  return nbytes > 0 && (nbytes & (nbytes - 1)) == 0;
+}
+
+inline size_t AlignNbytes(size_t nbytes, size_t alignment) {
+  return (nbytes + alignment - 1) & ~(alignment - 1);
+}
+
 
 constexpr size_t operator ""_B(unsigned long long n) {
   return static_cast<size_t>(n);

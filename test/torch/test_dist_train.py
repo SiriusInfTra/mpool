@@ -63,5 +63,5 @@ def main(rank, world_size):
     cleanup()
 
 if __name__ == "__main__":
-    world_size = 2
+    world_size = 4
     torch.multiprocessing.start_processes(main, args=(world_size,), nprocs=world_size, join=True, start_method='spawn')

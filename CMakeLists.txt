@@ -1,37 +1,45 @@
-cmake_minimum_required(VERSION 3.18)
+cmake_minimum_required(VERSION 3.15)
 project(mpool VERSION 1.0.0 LANGUAGES CXX C CUDA)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_C_STANDARD 11)
-set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror -Wreturn-type -Wno-missing-field-initializers -Wno-class-memaccess -Wno-unused-parameter")
 
-find_package(CUDAToolkit 11 REQUIRED)
+
+option(CUDA_TOOLKIT_VERSION "CUDA Toolkit Version" 11)
+
+option(ENABLE_PYTHON_BINDING "build python extension" ON)
+option(ENABLE_TORCH "build PyTorch support" ON)
+option(ENABLE_TENSORRT "build TensorRT support" OFF)
+option(ENABLE_CUPY "build CuPy support" OFF)
+option(ENABLE_NUMBA "build Numba support" OFF)
+
+set(CONFIG_TEMPLATE ${CMAKE_SOURCE_DIR}/config.cmake.in)
+set(CONFIG_FILE ${CMAKE_BINARY_DIR}/config.cmake)
+if(NOT EXISTS ${CONFIG_FILE}) 
+    configure_file(${CONFIG_TEMPLATE} ${CONFIG_FILE} @ONLY)
+else()
+  message(STATUS "File ${CONFIG_FILE} already exists. Skipping configure_file.")
+endif()
+configure_file(${CONFIG_TEMPLATE} ${CONFIG_FILE} @ONLY)
+include(${CONFIG_FILE})
+
+
+find_package(CUDAToolkit ${CUDA_TOOLKIT_VERSION} REQUIRED)
 find_package(Threads REQUIRED)
 find_package(Boost REQUIRED)
 
-set(CMAKE_CUDA_ARCHITECTURES 70)
+set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror -Wreturn-type -Wno-missing-field-initializers -Wno-class-memaccess -Wno-unused-parameter")
 
-include(FetchContent)
-set(FETCHCONTENT_QUIET OFF)
 
+# include(FetchContent)
+# set(FETCHCONTENT_QUIET OFF)
 
 add_subdirectory(pages_pool)
 add_subdirectory(allocator)
-add_subdirectory(python)
-add_executable(mpool main.cc)
-target_link_libraries(mpool PRIVATE pages_pool)
+if(ENABLE_PYTHON_BINDING)
+  message("Python Binding is enabled.")
+  add_subdirectory(python)
+else()
+  message("Python Binding is not enabled.")
+endif()
 
-# include(/home/wyk/miniforge3/envs/dev2/lib/python3.10/site-packages/cython_cmake/cmake/FindCython.cmake)
-# include(/home/wyk/miniforge3/envs/dev2/lib/python3.10/site-packages/cython_cmake/cmake/UseCython.cmake)
-# set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH}:$ENV{HOME}/miniforge3/envs/dev2/lib/python3.10/site-packages/cython_cmake/cmake)
 include(cmake/glog.cmake)
-
-
-# add_custom_target(PostBuild ALL
-#     COMMAND ${CMAKE_COMMAND} -E echo "Build complete. Running pip install ./python..."
-#     COMMAND ${CMAKE_COMMAND} -E env pip install ./python
-#     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-#     COMMENT "Running post-build commands"
-# )
-
-# # 确保 PostBuild 目标在所有其他目标完成后执行
-# add_dependencies(PostBuild mpool)

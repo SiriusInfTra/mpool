@@ -15,9 +15,9 @@ private:
   MemBlock *AllocWithContext(size_t nbytes, StreamContext &stream_context,
                              const bip::scoped_lock<bip_mutex> &lock);
 
-  void Free0(MemBlock *block, bip::scoped_lock<bip::interprocess_mutex> &lock);
+  void FreeWithLock(MemBlock *block, bip::scoped_lock<bip::interprocess_mutex> &lock);
 
-  MemBlock *Alloc0(size_t nbytes, cudaStream_t cuda_stream, bool try_expand_VA,
+  MemBlock *AllocWithLock(size_t nbytes, cudaStream_t cuda_stream, bool try_expand_VA,
                    bip::scoped_lock<bip::interprocess_mutex> &lock);
   bool CheckStateInternal(const bip::scoped_lock<bip_mutex> &lock);
 
@@ -28,7 +28,7 @@ public:
   MemBlock *Alloc(size_t nbytes, size_t alignment, cudaStream_t cuda_stream,
                   size_t flags = 0) override;
 
-  MemBlock *Realloc(MemBlock *block, size_t nbytes, cudaStream_t cuda_stream,
+  MemBlock *Realloc(MemBlock *block, size_t nbytes, size_t alignment, cudaStream_t cuda_stream,
                     size_t flags = 0) override;
   void Free(const MemBlock *block, size_t flags = 0) override;
 

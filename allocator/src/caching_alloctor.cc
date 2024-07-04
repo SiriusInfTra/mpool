@@ -1,9 +1,9 @@
 #include "vmm_allocator.h"
-#include <stats.h>
 #include <caching_allocator.h>
 #include <mapping_region.h>
 #include <pages.h>
 #include <shm.h>
+#include <stats.h>
 #include <util.h>
 
 #include <array>
@@ -30,12 +30,13 @@ CachingAllocator::CachingAllocator(SharedMemory &shared_memory,
           [&](int device_id, cudaStream_t cuda_stream, OOMReason reason) {
             ReportOOM(cuda_stream, reason, true);
           }),
-      process_local_{page_pool, shared_memory, mapping_region_,
-                     all_block_list_, all_block_map_},
+      process_local_{page_pool, shared_memory, mapping_region_, all_block_list_,
+                     all_block_map_},
       stream_context_map_(
           *shared_memory_->find_or_construct<
               bip_unordered_map<cudaStream_t, shm_ptr<StreamContext>>>(
-              "CA_stream_context_map")(shared_memory_->get_segment_manager())) {}
+              "CA_stream_context_map")(shared_memory_->get_segment_manager())) {
+}
 
 StreamContext &
 CachingAllocator::GetStreamContext(cudaStream_t cuda_stream,
@@ -78,32 +79,28 @@ CachingAllocator::AllocWithContext(size_t nbytes, StreamContext &stream_context,
   return free_block;
 }
 
-MemBlock *
-CachingAllocator::Alloc0(size_t nbytes, cudaStream_t cuda_stream,
-                         bool try_expand_VA,
-                         bip::scoped_lock<bip::interprocess_mutex> &lock) {
-  LOG_IF(INFO, VERBOSE_LEVEL >= 1)
-      << "Alloc " << ByteDisplay(nbytes) << ", stream = " << cuda_stream
-      << ", try_expand_VA = " << try_expand_VA << ".";
-  CHECK_GT(nbytes, 0);
+MemBlock *CachingAllocator::AllocWithLock(
+    size_t nbytes_with_alignment, cudaStream_t cuda_stream, bool try_expand_VA,
+    bip::scoped_lock<bip::interprocess_mutex> &lock) {
   bool tried_global_stream = false, tried_expand_va = false;
   CHECK(CHECK_LEVEL < 1 || CheckStateInternal(lock));
-  nbytes = (nbytes + config.align_nbytes - 1) & ~(config.align_nbytes - 1);
+
   auto &stream_context = GetStreamContext(cuda_stream, lock);
-  auto *block = AllocWithContext(nbytes, stream_context, lock);
+  auto *block = AllocWithContext(nbytes_with_alignment, stream_context, lock);
   if (block == nullptr) {
-    block = AllocWithContext(nbytes, global_stream_context_, lock);
+    block =
+        AllocWithContext(nbytes_with_alignment, global_stream_context_, lock);
     tried_global_stream = true;
   }
   if (block == nullptr && try_expand_VA) {
     CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
-    block = stream_context.stream_block_list.CreateEntryExpandVA(process_local_,
-                                                                 nbytes);
+    block = stream_context.stream_block_list.CreateEntryExpandVA(
+        process_local_, nbytes_with_alignment);
     LOG_IF(INFO, VERBOSE_LEVEL >= 3) << block;
     CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
     stream_context.stream_free_list.PushBlock(process_local_, block);
     CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
-    block = AllocWithContext(nbytes, stream_context, lock);
+    block = AllocWithContext(nbytes_with_alignment, stream_context, lock);
     tried_expand_va = true;
   }
   CHECK(CHECK_LEVEL < 2 || CheckStateInternal(lock));
@@ -121,8 +118,8 @@ CachingAllocator::Alloc0(size_t nbytes, cudaStream_t cuda_stream,
   return block;
 }
 
-void CachingAllocator::Free0(MemBlock *block,
-                             bip::scoped_lock<bip::interprocess_mutex> &lock) {
+void CachingAllocator::FreeWithLock(
+    MemBlock *block, bip::scoped_lock<bip::interprocess_mutex> &lock) {
   LOG_IF(INFO, VERBOSE_LEVEL >= 1)
       << config.log_prefix << "Free block " << block;
   CHECK(CHECK_LEVEL < 1 || CheckStateInternal(lock));
@@ -169,35 +166,51 @@ void CachingAllocator::Free0(MemBlock *block,
 
 MemBlock *CachingAllocator::Alloc(size_t nbytes, size_t alignment,
                                   cudaStream_t cuda_stream, size_t flags) {
+  LOG_IF(INFO, VERBOSE_LEVEL >= 1)
+      << "Alloc " << ByteDisplay(nbytes) << ", stream = " << cuda_stream
+      << ", flags = " << flags << ".";
+  CHECK(IsPower2(alignment));
+  CHECK_GT(nbytes, 0);
+  size_t nbytes_with_alignment = AlignNbytes(nbytes, alignment);
   bip::scoped_lock lock{shared_memory_.GetMutex()};
-  return Alloc0(nbytes, cuda_stream, flags & VMMAllocator::ALLOC_TRY_EXPAND_VA,
-                lock);
+  CHECK_GT(nbytes_with_alignment, 0);
+  return AllocWithLock(nbytes_with_alignment, cuda_stream,
+                       flags & VMMAllocator::ALLOC_TRY_EXPAND_VA, lock);
 }
 
 MemBlock *CachingAllocator::Realloc(MemBlock *block, size_t nbytes,
-                                    cudaStream_t cuda_stream, size_t flags) {
+                                    size_t alignment, cudaStream_t cuda_stream,
+                                    size_t flags) {
+  LOG_IF(INFO, VERBOSE_LEVEL >= 1)
+      << "Realloc from" << block->nbytes << " to " << ByteDisplay(nbytes)
+      << ", alignment = " << alignment << ", stream = " << cuda_stream
+      << ", flags = " << flags << ".";
   bool fallback_memcpy = flags & REALLOC_FALLBACK_MEMCPY;
+  CHECK_GT(nbytes, 0);
+  CHECK(IsPower2(alignment));
+  size_t nbytes_with_alignment = AlignNbytes(nbytes, alignment);
   bip::scoped_lock lock{shared_memory_.GetMutex()};
   CHECK_EQ(block->stream, cuda_stream);
   auto &context = GetStreamContext(cuda_stream, lock);
   auto *resized_block =
-      context.stream_free_list.ResizeBlock(process_local_, block, nbytes);
+      context.stream_free_list.ResizeBlock(process_local_, block, nbytes_with_alignment);
   if (!fallback_memcpy || resized_block != nullptr) {
     return resized_block;
   }
-  resized_block = Alloc0(nbytes, cuda_stream, true, lock);
+  resized_block = AllocWithLock(nbytes_with_alignment, cuda_stream, true, lock);
   auto *dst = mapping_region_.GetBasePtr() + resized_block->addr_offset;
   auto *src = mapping_region_.GetBasePtr() + block->addr_offset;
   size_t count = block->nbytes;
-  Free0(block, lock);
+  FreeWithLock(block, lock);
+  lock.unlock();
   CUDA_CALL(
       cudaMemcpyAsync(dst, src, count, cudaMemcpyDeviceToDevice, cuda_stream));
   return resized_block;
 }
 
-void CachingAllocator::Free(const MemBlock *block0, size_t flags) {
+void CachingAllocator::Free(const MemBlock *block, size_t flags) {
   bip::scoped_lock lock{shared_memory_.GetMutex()};
-  return Free0(const_cast<MemBlock *>(block0), lock);
+  return FreeWithLock(const_cast<MemBlock *>(block), lock);
 }
 
 MemBlock *CachingAllocator::ReceiveMemBlock(shm_ptr<MemBlock> handle) {
@@ -231,7 +244,6 @@ void CachingAllocator::EmptyCache() {
   }
   CHECK(CHECK_LEVEL < 1 || CheckStateInternal(lock));
 };
-
 
 void CachingAllocator::DumpState() {
   auto now = std::chrono::system_clock::now();
@@ -290,8 +302,8 @@ bool CachingAllocator::CheckStateInternal(
   return ret;
 }
 
-void CachingAllocator::ReportOOM(cudaStream_t cuda_stream,
-                                 OOMReason reason, bool force_abort) {
+void CachingAllocator::ReportOOM(cudaStream_t cuda_stream, OOMReason reason,
+                                 bool force_abort) {
   VMMAllocator::ReportOOM(cuda_stream, reason);
   for (auto &&[_, handle] : stream_context_map_) {
     PrintStreamStats(*handle.ptr(shared_memory_));

@@ -23,7 +23,7 @@ public:
   virtual ~DirectAllocator() = default;
   virtual MemBlock *Alloc(size_t request_nbytes, size_t alignment,
                           cudaStream_t cuda_stream, size_t flags) override;
-  virtual MemBlock *Realloc(MemBlock *block, size_t nbytes,
+  virtual MemBlock *Realloc(MemBlock *block, size_t nbytes, size_t alignment, 
                             cudaStream_t cuda_stream, size_t flags) override {
     return nullptr;
   }

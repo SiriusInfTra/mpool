@@ -3,6 +3,7 @@ set(PAGES_POOL_SRC
     src/pages.cc
     src/pages_list.cc
     src/belong.cc
+    src/shm.cc
     src/cuda_handle.cc
 )
 set(PAGES_POOL_TEST

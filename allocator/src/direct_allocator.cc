@@ -2,6 +2,8 @@
 
 #include <algorithm>
 
+#include <glog/logging.h>
+
 namespace mpool {
 DirectAllocator::DirectAllocator(SharedMemory &shared_memory,
                                  PagesPool &page_pool,

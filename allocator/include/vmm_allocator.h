@@ -76,55 +76,11 @@ public:
 
   const CachingAllocatorStats &GetStats() const { return stats; }
 
-
-  void PrintStreamStats(StreamContext &stream_context) {
-    for (auto &&[is_small, label] :
-         {std::make_pair(false, "large"), std::make_pair(true, "small")}) {
-      LOG(INFO) << "~~~~~~~~~~ Stream " << stream_context.cuda_stream << " (" << label
-                << ") used / free ~~~~~~~~~~";
-      std::array<size_t, 2> cnt = {0, 0}, sum = {0, 0}, max = {0, 0},
-                            min = {std::numeric_limits<size_t>::max(),
-                                   std::numeric_limits<size_t>::max()},
-                            avg; // used / free
-      for (auto [iter, end] = stream_context.stream_block_list.Iterators();
-           iter != end; ++iter) {
-        auto *block = iter->ptr(shared_memory_);
-        if (block->is_small != is_small) {
-          continue;
-        }
-        cnt[block->is_free] += 1;
-        sum[block->is_free] += block->nbytes;
-        max[block->is_free] = std::max(max[block->is_free], block->nbytes);
-        min[block->is_free] = std::min(min[block->is_free], block->nbytes);
-      }
-      for (bool is_free : {false, true}) {
-        if (sum[is_free] == 0) {
-          avg[is_free] = 0;
-        } else {
-          avg[is_free] = sum[is_free] / cnt[is_free];
-        }
-      }
-      for (auto &min_value : min) {
-        if (min_value == std::numeric_limits<size_t>::max()) {
-          min_value = 0;
-        }
-      }
-      LOG(INFO) << "cnt: " << cnt[0] << " / " << cnt[1];
-      LOG(INFO) << "sum: " << ByteDisplay(sum[0]) << " / "
-                << ByteDisplay(sum[1]);
-      LOG(INFO) << "avg: " << ByteDisplay(avg[0]) << " / "
-                << ByteDisplay(avg[1]);
-      LOG(INFO) << "max: " << ByteDisplay(max[0]) << " / "
-                << ByteDisplay(max[1]);
-      LOG(INFO) << "min: " << ByteDisplay(min[0]) << " / "
-                << ByteDisplay(min[1]);
-    }
-  }
+  void PrintStreamStats(StreamContext &stream_context);
 
   std::pair<bip_list_iterator<MemBlock>, bip_list_iterator<MemBlock>>
   GetAllBlocks() const;
-
-    virtual MemBlock *RetainMemBlock(std::byte *ptr) override {
+  virtual MemBlock *RetainMemBlock(std::byte *ptr) override {
     bip::scoped_lock lock{shared_memory_.GetMutex()};
     auto iter = all_block_map_.find(ptr - GetBasePtr());
     if (iter == all_block_map_.end()) {

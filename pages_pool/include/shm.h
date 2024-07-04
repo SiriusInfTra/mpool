@@ -8,7 +8,6 @@
 #include <boost/unordered/unordered_map_fwd.hpp>
 #include <boost/interprocess/containers/string.hpp>
 #include <functional>
-#include <glog/logging.h>
 #include <memory>
 
 namespace mpool {
@@ -48,28 +47,13 @@ public:
 
   bip::managed_shared_memory *operator->() { return &shared_memory; }
 
-  void OnInit(const std::function<void(bool first_init)> &init_func) {
-    CHECK(!is_init_);
-    bip::scoped_lock lock{*mutex_};
-    bool first_init = (*ref_count_)++ == 0;
-    init_func(first_init);
-  }
+  void OnInit(const std::function<void(bool first_init)> &init_func);
 
-  void OnDeinit(const std::function<void(bool last_deinit)> &deinit_func) {
-    CHECK(!is_deinit_);
-    bip::scoped_lock lock{*mutex_};
-    bool last_deinit = --(*ref_count_) == 0;
-    deinit_func(last_deinit);
-    if (last_deinit) {
-      lock.unlock();
-      // bip::shared_memory_object::remove(name.c_str());
-    }
-    is_deinit_ = true;
-  }
+  void OnDeinit(const std::function<void(bool last_deinit)> &deinit_func);
 
   bip_mutex &GetMutex() { return *mutex_; }
 
-  ~SharedMemory() { CHECK(is_deinit_); }
+  ~SharedMemory();
 };
 
 template <typename T> class 

@@ -6,9 +6,6 @@
 #include <boost/container/container_fwd.hpp>
 #include <boost/interprocess/interprocess_fwd.hpp>
 #include <boost/container/vector.hpp>
-
-#include <glog/logging.h>
-
 namespace mpool {
 class FreeList {
 public:

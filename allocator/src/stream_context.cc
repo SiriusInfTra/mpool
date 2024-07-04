@@ -1,9 +1,11 @@
-#include "mem_block.h"
 #include <iterator>
-#include <stream_context.h>
-
 #include <tuple>
 #include <unordered_set>
+
+#include <mem_block.h>
+#include <stream_context.h>
+
+#include <glog/logging.h>
 
 namespace mpool {
 
@@ -452,5 +454,35 @@ std::pair<bip_list<shm_ptr<MemBlock>>::const_iterator,
           bip_list<shm_ptr<MemBlock>>::const_iterator>
 StreamBlockList::Iterators() const {
   return {stream_block_list_.begin(), stream_block_list_.end()};
+}
+MemBlock *StreamFreeList::PopBlock(ProcessLocalData &local, bool is_small,
+                                   ptrdiff_t addr_offset, size_t nbytes) {
+  auto free_list = free_block_list_[is_small];
+
+  auto *stream_block_list = stream_block_list_.ptr(local.shared_memory_);
+  auto *mem_block = stream_block_list->SearchBlock(local, addr_offset);
+  CHECK(mem_block != nullptr);
+  CHECK(mem_block->is_free);
+  mem_block = PopBlock(local, mem_block);
+  CHECK_LE(mem_block->addr_offset, addr_offset);
+  CHECK_GE(mem_block->addr_offset + mem_block->nbytes, addr_offset + nbytes);
+  if (mem_block->addr_offset < addr_offset) {
+    auto remain = addr_offset - mem_block->addr_offset;
+    auto *next_mem_block =
+        stream_block_list->SplitBlock(local, mem_block, remain);
+    PushBlock(local, mem_block);
+    mem_block = next_mem_block;
+  }
+  if (mem_block->addr_offset + mem_block->nbytes > addr_offset + nbytes) {
+    auto remain = nbytes;
+    auto *next_mem_block =
+        stream_block_list->SplitBlock(local, mem_block, remain);
+    PushBlock(local, next_mem_block);
+  }
+  // CHECK(mem_block->is_free);
+  // auto *stat = stats_.ptr(local.shared_memory_);
+  // stat->SetBlockFree(mem_block, false);
+  // free_list.erase(mem_block->iter_free_block_list);
+  return mem_block;
 }
 } // namespace mpool

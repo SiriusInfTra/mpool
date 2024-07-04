@@ -23,6 +23,8 @@
 #include <torch/csrc/Storage.h>
 #include <torch/csrc/utils.h>
 #include <utility>
+
+#include <glog/logging.h>
 namespace mpool {
 
 c10::cuda::CUDACachingAllocator::Stat &

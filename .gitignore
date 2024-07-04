@@ -6,3 +6,5 @@ __pycache__
 *.pyi
 *.egg-info
 *.so
+/data
+/output

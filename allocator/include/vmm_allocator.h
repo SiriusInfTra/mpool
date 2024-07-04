@@ -124,6 +124,15 @@ public:
   std::pair<bip_list_iterator<MemBlock>, bip_list_iterator<MemBlock>>
   GetAllBlocks() const;
 
+    virtual MemBlock *RetainMemBlock(std::byte *ptr) override {
+    bip::scoped_lock lock{shared_memory_.GetMutex()};
+    auto iter = all_block_map_.find(ptr - GetBasePtr());
+    if (iter == all_block_map_.end()) {
+      return nullptr;
+    }
+    return iter->second.ptr(shared_memory_);
+  }
+
   void ResetPeakStats();
 };
 

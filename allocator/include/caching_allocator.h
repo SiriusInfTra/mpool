@@ -1,5 +1,6 @@
 #pragma once
 
+#include <boost/interprocess/sync/scoped_lock.hpp>
 #include <vmm_allocator.h>
 
 namespace mpool {
@@ -30,6 +31,7 @@ public:
 
   MemBlock *Realloc(MemBlock *block, size_t nbytes, size_t alignment, cudaStream_t cuda_stream,
                     size_t flags = 0) override;
+  
   void Free(const MemBlock *block, size_t flags = 0) override;
 
   std::byte *GetBasePtr() const override {

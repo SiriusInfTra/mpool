@@ -56,6 +56,19 @@ public:
    */
   virtual void Free(const MemBlock *block, size_t flags) = 0;
 
+
+  /**
+   * @brief Retains a memory block.
+   *
+   * This function is used to retain a memory block that was previously
+   * allocated by the allocator. The memory block is retained by the caller
+   * and will not be deallocated by the allocator until it is released.
+   *
+   * @param ptr A pointer to the memory block to be retained.
+   * @return A pointer to the retained memory block.
+   */
+  virtual MemBlock *RetainMemBlock(std::byte *ptr) = 0;
+
   /**
    * @brief Returns the base pointer of the allocator.
    *

@@ -78,20 +78,20 @@ inline void RegisterPagesPool(py::module &m) {
 }
 
 inline void RegisterCachingAllocator(py::module &m) {
-  py::class_<CachingAllocatorConfig>(m, "C_CachingAllocatorConfig")
+  py::class_<VMMAllocatorConfig>(m, "C_CachingAllocatorConfig")
       .def(py::init<const std::string &, const std::string &, size_t, size_t,
                     const std::string &, size_t, size_t>(),
            py::arg("log_prefix"), py::arg("shm_name"), py::arg("shm_nbytes"),
            py::arg("va_range_scale"), py::arg("belong_name"),
            py::arg("small_block_nbytes"), py::arg("align_nbytes"))
-      .def_readwrite("log_prefix", &CachingAllocatorConfig::log_prefix)
-      .def_readwrite("shm_name", &CachingAllocatorConfig::shm_name)
-      .def_readwrite("shm_nbytes", &CachingAllocatorConfig::shm_nbytes)
-      .def_readwrite("va_range_scale", &CachingAllocatorConfig::va_range_scale)
-      .def_readwrite("belong_name", &CachingAllocatorConfig::belong_name)
+      .def_readwrite("log_prefix", &VMMAllocatorConfig::log_prefix)
+      .def_readwrite("shm_name", &VMMAllocatorConfig::shm_name)
+      .def_readwrite("shm_nbytes", &VMMAllocatorConfig::shm_nbytes)
+      .def_readwrite("va_range_scale", &VMMAllocatorConfig::va_range_scale)
+      .def_readwrite("belong_name", &VMMAllocatorConfig::belong_name)
       .def_readwrite("small_block_nbytes",
-                     &CachingAllocatorConfig::small_block_nbytes)
-      .def_readwrite("align_nbytes", &CachingAllocatorConfig::align_nbytes);
+                     &VMMAllocatorConfig::small_block_nbytes)
+      .def_readwrite("align_nbytes", &VMMAllocatorConfig::align_nbytes);
   py::class_<MemBlock>(m, "C_MemBlock")
       .def_readonly("addr_offset", &MemBlock::addr_offset)
       .def_readonly("nbytes", &MemBlock::nbytes)
@@ -99,7 +99,7 @@ inline void RegisterCachingAllocator(py::module &m) {
         return reinterpret_cast<long>(mem_block->stream);
       });
   py::class_<PyCachingAllocator>(m, "C_CachingAllocator")
-      .def(py::init([](PyPagePool pages_pool, CachingAllocatorConfig conf) {
+      .def(py::init([](PyPagePool pages_pool, VMMAllocatorConfig conf) {
              auto &pages_pool_ref = *pages_pool.GetReference().GetObject();
              auto *caching_allocator = new SharableObject<CachingAllocator>{
                  conf.shm_name, conf.shm_nbytes, pages_pool_ref, conf};

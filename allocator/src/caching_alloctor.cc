@@ -21,7 +21,7 @@ namespace mpool {
 
 CachingAllocator::CachingAllocator(SharedMemory &shared_memory,
                                    PagesPool &page_pool,
-                                   CachingAllocatorConfig config,
+                                   VMMAllocatorConfig config,
                                    bool first_init)
     : VMMAllocator(shared_memory, page_pool, config, first_init),
       mapping_region_(

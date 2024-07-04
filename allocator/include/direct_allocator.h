@@ -10,7 +10,7 @@
 #include <vmm_allocator.h>
 namespace mpool {
 
-using DirectAllocatorConfig = CachingAllocatorConfig;
+using VMMAllocatorConfig = VMMAllocatorConfig;
 
 class DirectAllocator : public VMMAllocator {
 private:
@@ -19,7 +19,7 @@ private:
 
 public:
   DirectAllocator(SharedMemory &shared_memory, PagesPool &page_pool,
-                  DirectAllocatorConfig config, bool first_init);
+                  VMMAllocatorConfig config, bool first_init);
   virtual ~DirectAllocator() = default;
   virtual MemBlock *Alloc(size_t request_nbytes, size_t alignment,
                           cudaStream_t cuda_stream, size_t flags) override;

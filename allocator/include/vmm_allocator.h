@@ -21,7 +21,7 @@
 
 namespace mpool {
 
-struct CachingAllocatorConfig {
+struct VMMAllocatorConfig {
   std::string log_prefix;
   std::string shm_name;
   size_t shm_nbytes;
@@ -34,10 +34,10 @@ struct CachingAllocatorConfig {
 class VMMAllocator : public IAllocator {
 public:
   const Belong belong;
-  const CachingAllocatorConfig config;
+  const VMMAllocatorConfig config;
   PagesPool &page_pool;
 
-  static bool RemoveShm(const CachingAllocatorConfig &config) {
+  static bool RemoveShm(const VMMAllocatorConfig &config) {
     return bip::shared_memory_object::remove(config.shm_name.c_str());
   }
 
@@ -59,7 +59,7 @@ protected:
 
 public:
   VMMAllocator(SharedMemory &shared_memory, PagesPool &page_pool,
-               CachingAllocatorConfig config, bool first_init);
+               VMMAllocatorConfig config, bool first_init);
 
   ~VMMAllocator();
   size_t GetDeviceFreeNbytes() const;

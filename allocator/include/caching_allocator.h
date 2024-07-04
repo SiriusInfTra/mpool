@@ -23,7 +23,7 @@ private:
 
 public:
   CachingAllocator(SharedMemory &shared_memory, PagesPool &page_pool,
-                   CachingAllocatorConfig config, bool first_init);
+                   VMMAllocatorConfig config, bool first_init);
 
   MemBlock *Alloc(size_t nbytes, size_t alignment, cudaStream_t cuda_stream,
                   size_t flags = 0) override;

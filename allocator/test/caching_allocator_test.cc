@@ -64,7 +64,7 @@ size_t WrapMemBlock::total_nbytes = 0;
 void run(const PagesPoolConf &config, const std::string &name, int seed) {
   SharableObject<PagesPool> pages_pool{config.shm_name, config.shm_nbytes,
                                        config};
-  CachingAllocatorConfig caching_allocator_config{.log_prefix = "CA ",
+  VMMAllocatorConfig caching_allocator_config{.log_prefix = "CA ",
                                                   .shm_name = "test_ca",
                                                   .shm_nbytes = 1_GB,
                                                   .va_range_scale = 8,

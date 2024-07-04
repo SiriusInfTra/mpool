@@ -16,7 +16,7 @@
 
 namespace mpool {
 VMMAllocator::VMMAllocator(SharedMemory &shared_memory, PagesPool &page_pool,
-                           CachingAllocatorConfig config, bool first_init)
+                           VMMAllocatorConfig config, bool first_init)
     : belong(
           page_pool.GetBelongRegistry().GetOrCreateBelong(config.belong_name)),
       config(std::move(config)), page_pool(page_pool),

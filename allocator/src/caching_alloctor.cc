@@ -242,6 +242,7 @@ void CachingAllocator::EmptyCache() {
     auto stream_context = handle.ptr(shared_memory_);
     stream_context->MoveFreeBlockTo(process_local_, global_stream_context_);
   }
+  stats.ResetPeakStats();
   CHECK(CHECK_LEVEL < 1 || CheckStateInternal(lock));
 };
 

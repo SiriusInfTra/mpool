@@ -35,7 +35,7 @@ MemBlock *DirectAllocator::Alloc(size_t request_nbytes, size_t alignment,
     size_t debug_here = 555;
     LOG(INFO) << debug_here;
   }
-  request_nbytes = (request_nbytes + alignment - 1) / alignment * alignment;
+  request_nbytes = AlignToPages(request_nbytes);
 
   if (request_nbytes < page_pool.config.page_nbytes) {
     auto *mem_block = global_stream_context_.stream_free_list.PopBlock(

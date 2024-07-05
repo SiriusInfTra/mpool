@@ -29,6 +29,10 @@ public:
   }
   virtual void Free(const MemBlock *block, size_t flags) override;
 
+  size_t AlignToPages(size_t nbytes) {
+    return nbytes >= page_pool.config.page_nbytes ? AlignNbytes(nbytes, page_pool.config.page_nbytes) : AlignNbytes(nbytes, page_pool.config.page_nbytes / 2);
+  }
+
   std::byte *GetBasePtr() const override {
     return mapping_region_.GetBasePtr();
   }

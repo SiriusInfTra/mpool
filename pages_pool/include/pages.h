@@ -17,8 +17,8 @@
 namespace mpool {
 namespace bip = boost::interprocess;
 
-const static constexpr unsigned VERBOSE_LEVEL = 1; /* 0 ~ 2*/
-const static constexpr unsigned CHECK_LEVEL = 3;   /* 0 ~ 3 */
+const static constexpr unsigned VERBOSE_LEVEL = MPOOL_CHECK_LEVEL; /* 0 ~ 3*/
+const static constexpr unsigned CHECK_LEVEL = MPOOL_CHECK_LEVEL;   /* 0 ~ 3 */
 
 struct PagesPoolConf {
   int device_id;

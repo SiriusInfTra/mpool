@@ -11,6 +11,8 @@ option(ENABLE_TORCH "build PyTorch support" ON)
 option(ENABLE_TENSORRT "build TensorRT support" OFF)
 option(ENABLE_CUPY "build CuPy support" OFF)
 option(ENABLE_NUMBA "build Numba support" OFF)
+option(MPOOL_CHECK_LEVEL "mpool check state level (0 ~ 3)" 0)
+option(MPOOL_VERBOSE_LEVEL "mpool version level (0 ~ 3)" 0)
 
 set(CONFIG_TEMPLATE ${PROJECT_SOURCE_DIR}/config.cmake.in)
 set(CONFIG_FILE ${PROJECT_BINARY_DIR}/config.cmake)
@@ -19,8 +21,11 @@ if(NOT EXISTS ${CONFIG_FILE})
 else()
   message(STATUS "File ${CONFIG_FILE} already exists. Skipping configure_file.")
 endif()
-configure_file(${CONFIG_TEMPLATE} ${CONFIG_FILE} @ONLY)
+# configure_file(${CONFIG_TEMPLATE} ${CONFIG_FILE} @ONLY)
 include(${CONFIG_FILE})
+
+add_compile_definitions(MPOOL_CHECK_LEVEL=${MPOOL_CHECK_LEVEL})
+add_compile_definitions(MPOOL_VERBOSE_LEVEL=${MPOOL_VERBOSE_LEVEL})
 
 
 find_package(CUDAToolkit ${CUDA_TOOLKIT_VERSION} REQUIRED)

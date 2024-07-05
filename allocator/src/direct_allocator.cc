@@ -112,6 +112,10 @@ void DirectAllocator::Free(const MemBlock *block, size_t flags) {
       block = global_stream_context_.stream_free_list.PopBlock(
           process_local_, const_cast<MemBlock *>(block));
       stats.SetBlockIsSmall(const_cast<MemBlock *>(block), false);
+      {
+        auto lock = page_pool.Lock();
+        page_pool.FreePages({mapping_region_.ByteOffsetToIndex(block->addr_offset)}, belong, lock);
+      }
       global_stream_context_.stream_free_list.PushBlock(
           process_local_, const_cast<MemBlock *>(block));
     }

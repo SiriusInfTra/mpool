@@ -24,10 +24,6 @@ endif()
 # configure_file(${CONFIG_TEMPLATE} ${CONFIG_FILE} @ONLY)
 include(${CONFIG_FILE})
 
-add_compile_definitions(MPOOL_CHECK_LEVEL=${MPOOL_CHECK_LEVEL})
-add_compile_definitions(MPOOL_VERBOSE_LEVEL=${MPOOL_VERBOSE_LEVEL})
-
-
 find_package(CUDAToolkit ${CUDA_TOOLKIT_VERSION} REQUIRED)
 find_package(Threads REQUIRED)
 find_package(Boost REQUIRED)

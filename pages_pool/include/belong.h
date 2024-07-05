@@ -125,6 +125,14 @@ public:
     return {handle, shared_memory_};
   }
 
+  std::vector<Belong> GetBelongs() {
+    std::vector<Belong> belongs;
+    for (auto ptr : *registered_belongs) {
+      belongs.push_back(GetBelong(ptr));
+    }
+    return belongs;
+  }
+
   Belong GetFreeBelong() const { return {kFreeBelong, shared_memory_}; }
 };
 } // namespace mpool

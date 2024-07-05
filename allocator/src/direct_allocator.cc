@@ -124,6 +124,7 @@ void DirectAllocator::Free(const MemBlock *block, size_t flags) {
 void DirectAllocator::ReportOOM(cudaStream_t cuda_stream, OOMReason reason,
                                 bool force_abort) {
   VMMAllocator::ReportOOM(cuda_stream, reason, force_abort);
+  page_pool.PrintStats();
   PrintStreamStats(global_stream_context_);
   LOG_IF(FATAL, force_abort) << config.log_prefix << "Abort.";
 }

@@ -66,10 +66,7 @@ public:
         return bip::scoped_lock<bip_mutex>{shared_memory_.GetMutex()};
     }
 
-    void PrintStatus() {
-        
-    }
-
+    void PrintStats();
 };
 
 

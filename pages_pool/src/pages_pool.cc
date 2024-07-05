@@ -115,4 +115,13 @@ PagesPool::~PagesPool() {
 
 BelongRegistry &PagesPool::GetBelongRegistry() { return belong_registery_; }
 
+void PagesPool::PrintStats() {
+  for (auto belong : belong_registery_.GetBelongs()) {
+    LOG(INFO) << "~~~~~~~~~~ Belong " << belong.GetName() <<" ~~~~~~~~~~";
+    LOG(INFO) << "pages_num: " << belong.GetPagesNum();
+    LOG(INFO) << "allocated_nbytes: " << belong.GetAllocatedNbytes();
+    // LOG(INFO) << ""
+  }
+
+}
 }; // namespace mpool

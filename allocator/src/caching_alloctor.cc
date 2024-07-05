@@ -305,6 +305,7 @@ bool CachingAllocator::CheckStateInternal(
 void CachingAllocator::ReportOOM(cudaStream_t cuda_stream, OOMReason reason,
                                  bool force_abort) {
   VMMAllocator::ReportOOM(cuda_stream, reason);
+  page_pool.PrintStats();
   for (auto &&[_, handle] : stream_context_map_) {
     PrintStreamStats(*handle.ptr(shared_memory_));
   }

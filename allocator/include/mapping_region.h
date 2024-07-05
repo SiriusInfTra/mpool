@@ -18,10 +18,12 @@
 
 enum class OOMReason { NO_PHYSICAL_PAGES, NO_VIRTUAL_SPACE, NO_MEMORY_BLOCK };
 
-using OOMObserver =
-    std::function<void(int device_id, cudaStream_t stream, OOMReason reason)>;
+
 
 namespace mpool {
+
+using OOMObserver =
+    std::function<void(int device_id, cudaStream_t stream, OOMReason reason)>;
 
 class IMappingRegion {
 public:

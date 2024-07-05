@@ -255,6 +255,16 @@ IMappingRegion::IMappingRegion(
   CU_CALL(cuMemAddressReserve(reinterpret_cast<CUdeviceptr *>(&base_ptr_),
                               mem_block_nbytes * mem_block_num * va_range_scale,
                               mem_block_nbytes, 0, 0));
+  for (auto &page : page_pool_.PagesView()) {
+      CU_CALL(cuMemMap(
+          reinterpret_cast<CUdeviceptr>(base_ptr_ + page.index * mem_block_nbytes),
+          mem_block_nbytes, 0, page.cu_handle, 0));
+  }
+  CUmemAccessDesc acc_desc = {
+      .location = {.type = CU_MEM_LOCATION_TYPE_DEVICE, .id = page_pool_.config.device_id},
+      .flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE};
+  CU_CALL(cuMemSetAccess(reinterpret_cast<CUdeviceptr>(base_ptr_), mem_block_nbytes * mem_block_num,
+                          &acc_desc, 1));
   LOG(INFO) << log_prefix << "dev_ptr = " << base_ptr_
             << ", mem_block_nbytes = " << mem_block_nbytes
             << ", mem_block_num = " << mem_block_num

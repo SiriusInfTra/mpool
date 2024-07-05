@@ -18,8 +18,6 @@
 
 namespace mpool {
 
-
-
 struct MemBlockExtraData {
   MemBlock *mem_block;
 
@@ -31,7 +29,6 @@ struct MemBlockExtraData {
   int event_count;
   std::vector<c10::cuda::CUDAStream> stream_set;
 };
-
 
 class TorchAllocator : public c10::cuda::CUDACachingAllocator::CUDAAllocator {
 public:
@@ -48,37 +45,39 @@ private:
 
   std::atomic<long> event_usage_counter;
   std::mutex lock_;
-  OOMObserver caching_allocator_oom_observer_;
+  std::shared_ptr<OOMObserver> caching_allocator_oom_observer_;
   std::vector<c10::cuda::CUDACachingAllocator::OutOfMemoryObserver>
       torch_oom_observers_;
-  
 
   bool initialized_ = false;
-
 
 public:
   TorchAllocator(std::vector<PyCachingAllocator> caching_allocator)
       : caching_allocators_(std::move(caching_allocator)),
-        event_usage_counter(0), caching_allocator_oom_observer_([&](int device_id,
-                                            cudaStream_t cuda_stream,
-                                            OOMReason reason) {
-          for (auto &observer : torch_oom_observers_) {
-            auto &caching_allocator = caching_allocators_.at(device_id);
-            size_t allocated_nbytes = caching_allocator->belong.GetPagesNum();
-            size_t device_total =
-                caching_allocator->page_pool.config.pool_nbytes;
-            size_t device_free = caching_allocator->GetDeviceFreeNbytes();
-            observer(device_id, allocated_nbytes, device_total, device_free);
-          }
-        }) {
+        event_usage_counter(0) {
+    caching_allocator_oom_observer_ = std::make_shared<OOMObserver>(
+        [&](int device_id, cudaStream_t cuda_stream, OOMReason reason) {
+
+        });
     for (auto &caching_allocator : caching_allocators_) {
-      caching_allocator->AddOOMObserver(&caching_allocator_oom_observer_);
+      caching_allocator->AddOOMObserver(caching_allocator_oom_observer_);
+    }
+  }
+
+  void OnOutOfMemory(int device_id, size_t allocated_nbytes,
+                     size_t device_total, size_t device_free) {
+    for (auto &observer : torch_oom_observers_) {
+      auto &caching_allocator = caching_allocators_.at(device_id);
+      size_t allocated_nbytes = caching_allocator->belong.GetPagesNum();
+      size_t device_total = caching_allocator->page_pool.config.pool_nbytes;
+      size_t device_free = caching_allocator->GetDeviceFreeNbytes();
+      observer(device_id, allocated_nbytes, device_total, device_free);
     }
   }
 
   ~TorchAllocator() {
     for (auto &caching_allocator : caching_allocators_) {
-      caching_allocator->RemoveOOMObserver(&caching_allocator_oom_observer_);
+      caching_allocator->RemoveOOMObserver(caching_allocator_oom_observer_);
     }
   }
 

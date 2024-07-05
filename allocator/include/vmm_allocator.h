@@ -53,7 +53,7 @@ protected:
 
   StreamContext &global_stream_context_;
 
-  std::vector<OOMObserver *> oom_observers_;
+  std::vector<std::shared_ptr<OOMObserver>> oom_observers_;
 
   bool CheckStats();
 
@@ -64,13 +64,14 @@ public:
   ~VMMAllocator();
   size_t GetDeviceFreeNbytes() const;
 
-  void AddOOMObserver(OOMObserver *observer);
+  void AddOOMObserver(std::shared_ptr<OOMObserver> observer);
 
-  void RemoveOOMObserver(OOMObserver *observer);
+  void RemoveOOMObserver(std::shared_ptr<OOMObserver> observer);
 
   virtual void ReportOOM(cudaStream_t cuda_stream, OOMReason reason, bool force_abort = true) {
-    for (auto *oom_observer : oom_observers_) {
-      (*oom_observer)(page_pool.config.device_id, cuda_stream, reason);
+    for (auto ptr : oom_observers_) {
+      auto &oom_observer = *ptr.get();
+      oom_observer(page_pool.config.device_id, cuda_stream, reason);
     }
   }
 

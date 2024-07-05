@@ -74,10 +74,10 @@ size_t VMMAllocator::GetDeviceFreeNbytes() const {
                  belong.GetAllocatedNbytes();
   return free_nbytes;
 }
-void VMMAllocator::AddOOMObserver(OOMObserver *observer) {
+void VMMAllocator::AddOOMObserver(std::shared_ptr<OOMObserver> observer) {
   oom_observers_.push_back(observer);
 }
-void VMMAllocator::RemoveOOMObserver(OOMObserver *observer) {
+void VMMAllocator::RemoveOOMObserver(std::shared_ptr<OOMObserver> observer) {
   oom_observers_.erase(
       std::remove(oom_observers_.begin(), oom_observers_.end(), observer));
 }

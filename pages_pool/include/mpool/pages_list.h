@@ -1,7 +1,7 @@
 #pragma once
 #include <algorithm>
-#include <util.h>
-#include <shm.h>
+#include <mpool/util.h>
+#include <mpool/shm.h>
 
 #include <boost/container/container_fwd.hpp>
 #include <boost/interprocess/interprocess_fwd.hpp>

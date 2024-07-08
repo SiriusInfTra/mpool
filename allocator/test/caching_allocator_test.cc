@@ -9,10 +9,10 @@
 
 #include <sys/wait.h>
 
-#include <caching_allocator.h>
-#include <pages_pool.h>
-#include <shm.h>
-#include <util.h>
+#include <mpool/caching_allocator.h>
+#include <mpool/pages_pool.h>
+#include <mpool/shm.h>
+#include <mpool/util.h>
 
 
 #include <glog/logging.h>

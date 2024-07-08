@@ -2,12 +2,12 @@
 
 #include <cstddef>
 
-#include <allocator.h>
-#include <mapping_region.h>
-#include <mem_block.h>
-#include <pages_pool.h>
-#include <util.h>
-#include <vmm_allocator.h>
+#include <mpool/allocator.h>
+#include <mpool/mapping_region.h>
+#include <mpool/mem_block.h>
+#include <mpool/pages_pool.h>
+#include <mpool/util.h>
+#include <mpool/vmm_allocator.h>
 namespace mpool {
 
 using VMMAllocatorConfig = VMMAllocatorConfig;

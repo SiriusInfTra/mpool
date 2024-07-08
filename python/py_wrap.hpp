@@ -2,12 +2,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
-#include <ostream>
-#include <utility>
 
-#include <shm.h>
-#include <pages_pool.h>
-#include <caching_allocator.h>
+#include <mpool/shm.h>
+#include <mpool/pages_pool.h>
+#include <mpool/caching_allocator.h>
 
 
 namespace mpool {

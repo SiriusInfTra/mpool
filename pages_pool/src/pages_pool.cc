@@ -3,12 +3,12 @@
 #include <utility>
 #include <vector>
 
-#include <belong.h>
-#include <pages.h>
-#include <pages_list.h>
-#include <shm.h>
-#include <util.h>
-#include <pages_pool.h>
+#include <mpool/belong.h>
+#include <mpool/pages.h>
+#include <mpool/pages_list.h>
+#include <mpool/shm.h>
+#include <mpool/util.h>
+#include <mpool/pages_pool.h>
 
 #include <boost/interprocess/interprocess_fwd.hpp>
 #include <boost/container/map.hpp>

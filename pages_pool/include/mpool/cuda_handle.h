@@ -1,15 +1,16 @@
 #pragma once
 
-#include "belong.h"
 #include <atomic>
+#include <ostream>
 
 #include <boost/container/list.hpp>
 #include <boost/interprocess/sync/interprocess_condition.hpp>
 #include <boost/interprocess/sync/interprocess_mutex.hpp>
 #include <boost/interprocess/sync/scoped_lock.hpp>
-#include <ostream>
-#include <pages.h>
-#include <shm.h>
+
+#include <mpool/pages.h>
+#include <mpool/shm.h>
+#include <mpool/belong.h>
 
 #include <sys/socket.h>
 #include <sys/un.h>

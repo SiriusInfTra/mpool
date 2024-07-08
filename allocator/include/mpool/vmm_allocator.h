@@ -3,16 +3,16 @@
 #include <cstddef>
 #include <string>
 
-#include <allocator.h>
-#include <belong.h>
-#include <mapping_region.h>
-#include <mem_block.h>
-#include <pages.h>
-#include <pages_pool.h>
-#include <shm.h>
-#include <stats.h>
-#include <stream_context.h>
-#include <util.h>
+#include <mpool/allocator.h>
+#include <mpool/belong.h>
+#include <mpool/mapping_region.h>
+#include <mpool/mem_block.h>
+#include <mpool/pages.h>
+#include <mpool/pages_pool.h>
+#include <mpool/shm.h>
+#include <mpool/stats.h>
+#include <mpool/stream_context.h>
+#include <mpool/util.h>
 
 #include <boost/interprocess/sync/interprocess_mutex.hpp>
 #include <boost/interprocess/sync/scoped_lock.hpp>

@@ -1,10 +1,11 @@
 #pragma once
 #include <cstddef>
 #include <iterator>
-#include <stats.h>
-#include <mapping_region.h>
-#include <mem_block.h>
-#include <shm.h>
+
+#include <mpool/stats.h>
+#include <mpool/mapping_region.h>
+#include <mpool/mem_block.h>
+#include <mpool/shm.h>
 
 #include <cuda_runtime_api.h>
 

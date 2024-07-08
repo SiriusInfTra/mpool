@@ -1,5 +1,5 @@
-#include "pages.h"
-#include <cuda_handle.h>
+#include <mpool/pages.h>
+#include <mpool/cuda_handle.h>
 #include <glog/logging.h>
 
 namespace mpool {

@@ -7,8 +7,8 @@
 #include <thread>
 #include <vector>
 
-#include <belong.h>
-#include <shm.h>
+#include <mpool/belong.h>
+#include <mpool/shm.h>
 
 #include <cuda.h>
 

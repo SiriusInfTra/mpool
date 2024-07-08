@@ -3,17 +3,14 @@
 #include <c10/core/DeviceGuard.h>
 #include <c10/core/DeviceType.h>
 #include <c10/cuda/CUDAException.h>
+
+#include <mpool/caching_allocator.h>
+#include <mpool/mem_block.h>
+#include <mpool/shm.h>
 #include <torch_allocator.h>
-
-#include <caching_allocator.h>
-#include <mem_block.h>
 #include <py_wrap.hpp>
-#include <shm.h>
 
-#include <atomic>
 #include <cstddef>
-#include <memory>
-
 #include <c10/core/Storage.h>
 #include <c10/cuda/CUDACachingAllocator.h>
 #include <c10/cuda/CUDAFunctions.h>

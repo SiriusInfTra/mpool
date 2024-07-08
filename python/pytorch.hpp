@@ -20,10 +20,10 @@
 #include <torch/csrc/utils/object_ptr.h>
 #include <torch/csrc/utils/python_numbers.h>
 
-#include <caching_allocator.h>
-#include <mem_block.h>
-#include <pages_pool.h>
-#include <shm.h>
+#include <mpool/caching_allocator.h>
+#include <mpool/mem_block.h>
+#include <mpool/pages_pool.h>
+#include <mpool/shm.h>
 #include <torch_allocator.h>
 
 #include <boost/interprocess/sync/interprocess_mutex.hpp>

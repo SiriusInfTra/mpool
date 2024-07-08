@@ -116,8 +116,8 @@ void CUDAIpcTransfer::Send(int fd_list[], size_t len, int socket_fd) {
 CUDAIpcTransfer::CUDAIpcTransfer(SharedMemory &shared_memory,
                                  std::vector<PhyPage> &phy_pages_ref,
                                  const PagesPoolConf &conf)
-    : server_sock_name_(conf.shm_name + "__sock_ipc_server"),
-      client_sock_name_(conf.shm_name + "__sock_ipc_client"),
+    : server_sock_name_(conf.shm_name + "__sock_ipc_server.sock"),
+      client_sock_name_(conf.shm_name + "__sock_ipc_client.sock"),
       message_queue_(shared_memory), phy_pages_ref_(phy_pages_ref),
       device_id_(conf.device_id),
       pages_num_(conf.pool_nbytes / conf.page_nbytes),

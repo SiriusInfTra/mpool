@@ -20,6 +20,7 @@ DirectAllocator::DirectAllocator(SharedMemory &shared_memory,
           process_local_, mapping_region_.GetVARangeNBytes());
   global_stream_context_.stream_free_list.PushBlock(process_local_, mem_block);
 }
+
 MemBlock *DirectAllocator::Alloc(size_t request_nbytes, size_t alignment,
                                  cudaStream_t cuda_stream, size_t flags) {
   CHECK_GT(request_nbytes, 0);
@@ -89,6 +90,7 @@ MemBlock *DirectAllocator::Alloc(size_t request_nbytes, size_t alignment,
     return mem_block;
   }
 }
+
 void DirectAllocator::Free(const MemBlock *block, size_t flags) {
   if (!block->is_small) {
     index_t page_begin = mapping_region_.ByteOffsetToIndex(block->addr_offset);
@@ -112,13 +114,15 @@ void DirectAllocator::Free(const MemBlock *block, size_t flags) {
       stats.SetBlockIsSmall(const_cast<MemBlock *>(block), false);
       {
         auto lock = page_pool.Lock();
-        page_pool.FreePages({mapping_region_.ByteOffsetToIndex(block->addr_offset)}, belong, lock);
+        page_pool.FreePages({mapping_region_.ByteOffsetToIndex(block->addr_offset)}, 
+                            belong, lock);
       }
       global_stream_context_.stream_free_list.PushBlock(
           process_local_, const_cast<MemBlock *>(block));
     }
   }
 }
+
 void DirectAllocator::ReportOOM(cudaStream_t cuda_stream, OOMReason reason,
                                 bool force_abort) {
   VMMAllocator::ReportOOM(cuda_stream, reason, force_abort);
@@ -126,4 +130,5 @@ void DirectAllocator::ReportOOM(cudaStream_t cuda_stream, OOMReason reason,
   PrintStreamStats(global_stream_context_);
   LOG_IF(FATAL, force_abort) << config.log_prefix << "Abort.";
 }
+
 } // namespace mpool

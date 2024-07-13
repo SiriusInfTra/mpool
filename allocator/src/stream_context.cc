@@ -296,9 +296,11 @@ void StreamBlockList::DumpStreamBlockList(ProcessLocalData &local,
     DumpMemBlock(local, out, handle.ptr(local.shared_memory_));
   }
 }
+
 void StreamBlockList::DumpMemBlockColumns(std::ostream &out) {
   out << "start,len,next,prev,unalloc_pages,is_free,is_small" << "\n";
 }
+
 void StreamBlockList::DumpMemBlock(ProcessLocalData &local, std::ostream &out,
                                    MemBlock *block) {
   auto *prev = GetPrevEntry(local, block);
@@ -370,6 +372,7 @@ bool StreamBlockList::CheckState(ProcessLocalData &local,
   }
   return true;
 }
+
 bool StreamFreeList::CheckState(ProcessLocalData &local) {
   std::unordered_set<MemBlock *> free_blocks;
   for (auto &freelist : free_block_list_) {
@@ -403,6 +406,7 @@ bool StreamFreeList::CheckState(ProcessLocalData &local) {
 
   return true;
 }
+
 void StreamContext::MoveFreeBlockTo(ProcessLocalData &local,
                                     StreamContext &other_context) {
   /* 1. fast return */
@@ -450,11 +454,13 @@ void StreamContext::MoveFreeBlockTo(ProcessLocalData &local,
   this->stream_block_list.stream_block_list_.erase(
       std::prev(this->stream_block_list.stream_block_list_.cend()));
 }
+
 std::pair<bip_list<shm_ptr<MemBlock>>::const_iterator,
           bip_list<shm_ptr<MemBlock>>::const_iterator>
 StreamBlockList::Iterators() const {
   return {stream_block_list_.begin(), stream_block_list_.end()};
 }
+
 MemBlock *StreamFreeList::PopBlock(ProcessLocalData &local, bool is_small,
                                    ptrdiff_t addr_offset, size_t nbytes) {
   auto free_list = free_block_list_[is_small];
@@ -485,4 +491,5 @@ MemBlock *StreamFreeList::PopBlock(ProcessLocalData &local, bool is_small,
   // free_list.erase(mem_block->iter_free_block_list);
   return mem_block;
 }
+
 } // namespace mpool

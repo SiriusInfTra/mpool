@@ -158,7 +158,8 @@ public:
   StreamFreeList stream_free_list;
 
   StreamContext(SharedMemory &shared_memory, int device_id, 
-                cudaStream_t cuda_stream, size_t small_block_nbytes, CachingAllocatorStats &stats)
+                cudaStream_t cuda_stream, size_t small_block_nbytes, 
+                CachingAllocatorStats &stats)
       : device_id(device_id), cuda_stream{cuda_stream},
         stream_block_list{device_id, cuda_stream, shared_memory,
                           small_block_nbytes, stats},

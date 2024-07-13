@@ -178,6 +178,7 @@ public:
 
 };
 
-using bip_string = bip::basic_string<char, std::char_traits<char>, bip::allocator<char, bip_shm::segment_manager>>;
+using bip_string = bip::basic_string<char, std::char_traits<char>, 
+                                     bip::allocator<char, bip_shm::segment_manager>>;
 
 } // namespace mpool

@@ -471,7 +471,7 @@ MemBlock *StreamFreeList::PopBlock(ProcessLocalData &local, bool is_small,
   CHECK(mem_block->is_free);
   mem_block = PopBlock(local, mem_block);
   CHECK_LE(mem_block->addr_offset, addr_offset);
-  CHECK_GE(mem_block->addr_offset + mem_block->nbytes, addr_offset + nbytes);
+  CHECK_GE(mem_block->addr_offset + mem_block->nbytes, addr_offset + nbytes) << mem_block;
   if (mem_block->addr_offset < addr_offset) {
     auto remain = addr_offset - mem_block->addr_offset;
     auto *next_mem_block =

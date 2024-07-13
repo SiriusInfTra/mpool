@@ -49,6 +49,7 @@ PagesPool::PagesPool(SharedMemory &shared_memory, PagesPoolConf conf,
   free_list_.Init(config.pool_nbytes / config.page_nbytes);
   LOG(INFO) << config.log_prefix << "Init PagesPool OK.";
 }
+
 index_t PagesPool::AllocConPages(Belong blg, num_t num_req,
                                  bip::scoped_lock<bip_mutex> &lock) {
   LOG_IF(INFO, VERBOSE_LEVEL >= 2)
@@ -69,6 +70,7 @@ index_t PagesPool::AllocConPages(Belong blg, num_t num_req,
   belong_registery_.GetFreeBelong().Get()->pages_num.fetch_sub(num_req, std::memory_order_relaxed);
   return index_begin;
 }
+
 std::vector<index_t>
 PagesPool::AllocDisPages(Belong blg, num_t num_req,
                          bip::scoped_lock<bip_mutex> &lock) {
@@ -122,6 +124,6 @@ void PagesPool::PrintStats() {
     LOG(INFO) << "allocated_nbytes: " << belong.GetAllocatedNbytes();
     // LOG(INFO) << ""
   }
-
 }
+
 }; // namespace mpool

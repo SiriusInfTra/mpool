@@ -84,7 +84,7 @@ public:
    * @param nbytes The number of bytes to calculate the unallocated flags for.
    * @return The unsigned value representing the unallocated flags (count).
    */
-  virtual int CalculateUnallocFlags(ptrdiff_t addr_offset, size_t nbytes);
+  virtual int CalculateUnallocFlags(ptrdiff_t addr_offset, size_t nbytes) = 0;
 
   /**
    * Calculates the unallocated flags for a given memory block.
@@ -159,6 +159,8 @@ public:
   EmptyCacheAndUpdateFlags(bip_list<shm_ptr<MemBlock>> &block_list) override;
 
   bool CanMerge(const MemBlock *block_a, const MemBlock *block_b) override;
+
+  int CalculateUnallocFlags(ptrdiff_t addr_offset, size_t nbytes) override;
 };
 
 class StaticMappingRegion : public IMappingRegion {
@@ -176,6 +178,8 @@ public:
   EmptyCacheAndUpdateFlags(bip_list<shm_ptr<MemBlock>> &block_list) override {}
 
   bool CanMerge(const MemBlock *block_a, const MemBlock *block_b) override;
+
+  int CalculateUnallocFlags(ptrdiff_t addr_offset, size_t nbytes) override;
 };
 
 struct ProcessLocalData {

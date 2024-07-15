@@ -469,9 +469,13 @@ MemBlock *StreamFreeList::PopBlock(ProcessLocalData &local, bool is_small,
   auto *mem_block = stream_block_list->SearchBlock(local, addr_offset);
   CHECK(mem_block != nullptr);
   CHECK(mem_block->is_free);
-  mem_block = PopBlock(local, mem_block);
   CHECK_LE(mem_block->addr_offset, addr_offset);
+  // if (mem_block->addr_offset + mem_block->nbytes < addr_offset + nbytes) {
+  //   LOG(INFO) << "WARN: " << *mem_block << " vs " << addr_offset << " " << nbytes;
+  //   LOG(INFO) << *std::next(mem_block->iter_all_block_list)->ptr(local.shared_memory_);
+  // }
   CHECK_GE(mem_block->addr_offset + mem_block->nbytes, addr_offset + nbytes) << mem_block;
+  mem_block = PopBlock(local, mem_block);
   if (mem_block->addr_offset < addr_offset) {
     auto remain = addr_offset - mem_block->addr_offset;
     auto *next_mem_block =

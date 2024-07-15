@@ -39,8 +39,10 @@ inline std::ostream &operator<<(std::ostream &out, const MemBlock &block) {
       << "nbytes: " << block.nbytes << ", "
       << "stream: " << block.stream << ", "
       << "unalloc_pages: " << block.unalloc_pages << ", "
+      << "device_id: " << block.device_id << ", "
       << "is_free: " << (block.is_free ? "true" : "false") << ", "
-      << "is_small: " << (block.is_small ? "true" : "false") << "}";
+      << "is_small: " << (block.is_small ? "true" : "false") << ", "
+      << "ref_count" << block.ref_count <<  "}";
   return out;
 }
 

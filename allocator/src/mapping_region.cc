@@ -261,7 +261,7 @@ IMappingRegion::IMappingRegion(
             << ", mem_block_num = " << mem_block_num
             << ", va_range_scale = " << va_range_scale << ".";
 }
-int IMappingRegion::CalculateUnallocFlags(ptrdiff_t addr_offset,
+int DynamicMappingRegion::CalculateUnallocFlags(ptrdiff_t addr_offset,
                                           size_t nbytes) {
   index_t va_range_l_i = ByteOffsetToIndex(addr_offset);
   index_t va_range_r_i = ByteOffsetToIndex(addr_offset + nbytes - 1) + 1;
@@ -277,6 +277,12 @@ int IMappingRegion::CalculateUnallocFlags(ptrdiff_t addr_offset,
       << ByteDisplay(nbytes);
   return unalloc_pages;
 }
+
+int StaticMappingRegion::CalculateUnallocFlags(ptrdiff_t addr_offset,
+                                          size_t nbytes) {
+  return 0;
+}
+
 bool StaticMappingRegion::CanMerge(const MemBlock *block_a,
                                    const MemBlock *block_b) {
   return !block_a->is_small || ByteOffsetToIndex(block_a->addr_offset) ==

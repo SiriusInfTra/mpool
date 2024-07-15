@@ -216,6 +216,8 @@ void TorchAllocator::recordStream(const c10::DataPtr &data_ptr,
       extra_data->from_sharing) {
     return;
   }
+  // TODO set
+  extra_data->stream_set.push_back(stream);
   extra_data->event_count++;
 }
 

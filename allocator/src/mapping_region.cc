@@ -42,7 +42,8 @@ void DynamicMappingRegion::AllocMappingsAndUpdateFlags(
         missing_va_mapping_i.push_back(index);
       }
     }
-    CHECK_EQ(block->unalloc_pages, missing_va_mapping_i.size()) << "Mismatch unalloc pages: " << block << ".";
+    CHECK_EQ(block->unalloc_pages, missing_va_mapping_i.size()) 
+        << "Mismatch unalloc pages: " << block << ".";
   }
 
   /* 2. alloc physical pages if necessary */

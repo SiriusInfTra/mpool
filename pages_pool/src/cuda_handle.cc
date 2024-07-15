@@ -14,9 +14,10 @@ void CUDAIpcTransfer::BindServer(int &socket_fd) {
   bzero(&server_addr, sizeof(server_addr));
   server_addr.sun_family = AF_UNIX;
 
-  unlink(server_sock_name_.c_str());
-  strncpy(server_addr.sun_path, server_sock_name_.c_str(),
-          server_sock_name_.size());
+  unlink(("/dev/shm/" + server_sock_name_).c_str());
+  // strncpy(server_addr.sun_path, server_sock_name_.c_str(),
+  //         server_sock_name_.size());
+  sprintf(server_addr.sun_path, "/dev/shm/%s", server_sock_name_.c_str());
 
   CHECK_EQ(
       bind(socket_fd, (struct sockaddr *)&server_addr, SUN_LEN(&server_addr)),
@@ -24,7 +25,7 @@ void CUDAIpcTransfer::BindServer(int &socket_fd) {
       << log_prefix_ << "Bind error.";
 }
 void CUDAIpcTransfer::UnlinkServer(int socket_fd) {
-  unlink(server_sock_name_.c_str());
+  unlink(("/dev/shm/" + server_sock_name_).c_str());
   close(socket_fd);
 }
 void CUDAIpcTransfer::BindClient(int &socket_fd) {
@@ -36,16 +37,17 @@ void CUDAIpcTransfer::BindClient(int &socket_fd) {
   bzero(&client_addr, sizeof(client_addr));
   client_addr.sun_family = AF_UNIX;
 
-  unlink(client_sock_name_.c_str());
-  strncpy(client_addr.sun_path, client_sock_name_.c_str(),
-          client_sock_name_.size());
+  unlink(("/dev/shm/" + client_sock_name_).c_str());
+  // strncpy(client_addr.sun_path, client_sock_name_.c_str(),
+  //         client_sock_name_.size());
+  sprintf(client_addr.sun_path, "/dev/shm/%s", client_sock_name_.c_str());
   CHECK_EQ(
       bind(socket_fd, (struct sockaddr *)&client_addr, SUN_LEN(&client_addr)),
       0)
       << log_prefix_ << "Bind fail.";
 }
 void CUDAIpcTransfer::UnlinkClient(int socket_fd) {
-  unlink(client_sock_name_.c_str());
+  unlink(("/dev/shm" + client_sock_name_).c_str());
   close(socket_fd);
 }
 void CUDAIpcTransfer::Receive(int fd_list[], size_t len, int socket_fd) {
@@ -90,8 +92,9 @@ void CUDAIpcTransfer::Send(int fd_list[], size_t len, int socket_fd) {
   struct sockaddr_un client_addr;
   bzero(&client_addr, sizeof(client_addr));
   client_addr.sun_family = AF_UNIX;
-  strncpy(client_addr.sun_path, client_sock_name_.c_str(),
-          client_sock_name_.size());
+  // strncpy(client_addr.sun_path, client_sock_name_.c_str(),
+  //         client_sock_name_.size());
+  sprintf(client_addr.sun_path, "/dev/shm/%s", client_sock_name_.c_str());
 
   msg.msg_control = control_un.data();
   msg.msg_controllen = control_un.size();
@@ -141,6 +144,8 @@ void CUDAIpcTransfer::InitMaster(Belong kFree) {
       .type = CU_MEM_ALLOCATION_TYPE_PINNED,
       .requestedHandleTypes = CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR,
       .location = {.type = CU_MEM_LOCATION_TYPE_DEVICE, .id = device_id_}};
+  DLOG(INFO) << log_prefix_ << "Allocating " << pages_num_ << " x "
+             << ByteDisplay(page_nbytes_) << " block(s) on device " << device_id_;
   CUmemGenericAllocationHandle cu_handle;
   auto start = std::chrono::steady_clock::now();
   for (index_t index = 0; index < pages_num_; ++index) {
@@ -149,12 +154,11 @@ void CUDAIpcTransfer::InitMaster(Belong kFree) {
         PhyPage{index, cu_handle, &shm_belong_list_[index]});
   }
   auto end = std::chrono::steady_clock::now();
-  LOG_IF(INFO, VERBOSE_LEVEL >= 1) << log_prefix_ << "[CUDAIpcTransfer] Alloc " << pages_num_ << " x "
-            << ByteDisplay(page_nbytes_) << " block(s) costs "
-            << std::chrono::duration_cast<std::chrono::milliseconds>(end -
-                                                                     start)
-                   .count()
-            << " ms.";
+  LOG_IF(INFO, VERBOSE_LEVEL >= 1) << log_prefix_ 
+      << "[CUDAIpcTransfer] Alloc " << pages_num_ << " x "
+      << ByteDisplay(page_nbytes_) << " block(s) costs "
+      << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()
+      << " ms.";
   export_handle_thread_ = std::thread{[&] { Run(); }};
   while (!cuda_ipc_work_ready) {}
   LOG_IF(INFO, VERBOSE_LEVEL >= 1) << log_prefix_ << "[CUDAIpcTransfer] Init master ok!";
@@ -170,8 +174,9 @@ void CUDAIpcTransfer::InitMirror() {
     size_t chunk_size =
         std::min(pages_num_ - chunk_begin, TRANSFER_CHUNK_SIZE);
     std::vector<int> fd_list(chunk_size);
-    LOG_IF(INFO, VERBOSE_LEVEL >= 2) << log_prefix_ << "[CUDAIpcTransfer] Mirror is receving handles: " << chunk_begin << "/"
-          << pages_num_ << ".";
+    LOG_IF(INFO, VERBOSE_LEVEL >= 2) << log_prefix_ 
+        << "[CUDAIpcTransfer] Mirror is receving handles: " << chunk_begin << "/"
+        << pages_num_ << ".";
     message_queue_.WaitEvent(Event::kClientReceived);
     Receive(fd_list.data(), fd_list.size(), socket_fd);
     for (size_t k = 0; k < chunk_size; ++k) {

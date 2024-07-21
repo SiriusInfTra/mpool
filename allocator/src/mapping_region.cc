@@ -174,7 +174,7 @@ void DynamicMappingRegion::UnMapPages(const std::vector<index_t> &unmap_pages) {
 
 
 void DynamicMappingRegion::EmptyCacheAndUpdateFlags(bip_list<shm_ptr<MemBlock>> &block_list) {
-  LOG_IF(INFO, VERBOSE_LEVEL >= 0) << "EmptyCache";
+  LOG_IF(INFO, VERBOSE_LEVEL >= 1) << "EmptyCache";
   std::vector<index_t> release_pages;
   std::vector<index_t> unmap_pages;
   auto iter = block_list.begin();

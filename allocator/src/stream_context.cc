@@ -203,12 +203,16 @@ MemBlock *StreamFreeList::PopBlock(ProcessLocalData &local, MemBlock *block) {
 MemBlock *StreamFreeList::ResizeBlock(ProcessLocalData &local, MemBlock *block, size_t nbytes) {
   auto *stream_block_list = stream_block_list_.ptr(local.shared_memory_);
   auto *next_block = stream_block_list->GetNextEntry(local, block);
-  if (next_block == nullptr || !next_block->is_free || block->addr_offset + block->nbytes != next_block->nbytes) {
+  if (next_block == nullptr 
+      || !next_block->is_free 
+      || block->addr_offset + block->nbytes != next_block->nbytes) {
     return nullptr;
   }
   PopBlock(local, next_block);
   if (block->nbytes + next_block->nbytes < nbytes) {
-    auto *next_block2 = stream_block_list->SplitBlock(local, next_block, next_block->nbytes - (nbytes - block->nbytes));
+    auto *next_block2 = stream_block_list->SplitBlock(local, 
+                                                      next_block, 
+                                                      next_block->nbytes - (nbytes - block->nbytes));
     PushBlock(local, next_block2);
   }
   if (next_block->is_small != block->is_small) {
@@ -232,7 +236,8 @@ MemBlock *StreamFreeList::PushBlock(ProcessLocalData &local, MemBlock *block) {
   if (auto prev_block = stream_block_list_ptr->GetPrevEntry(local, block);
       prev_block && prev_block->is_free &&
       prev_block->is_small == block->is_small &&
-      prev_block->unalloc_pages == 0 && prev_block->stream == current_stream_ && local.mapping_region_.CanMerge(prev_block, block)) {
+      prev_block->unalloc_pages == 0 && prev_block->stream == current_stream_ && 
+      local.mapping_region_.CanMerge(prev_block, block)) {
     // LOG(INFO)  << "is small " << block->is_small << "free_list " <<
     // free_list.size();
     free_list.erase(prev_block->iter_free_block_list);
@@ -241,7 +246,8 @@ MemBlock *StreamFreeList::PushBlock(ProcessLocalData &local, MemBlock *block) {
   if (auto next_block = stream_block_list_ptr->GetNextEntry(local, block);
       next_block && next_block->is_free &&
       next_block->is_small == block->is_small &&
-      next_block->unalloc_pages == 0 && next_block->stream == current_stream_ && local.mapping_region_.CanMerge(block, next_block)) {
+      next_block->unalloc_pages == 0 && next_block->stream == current_stream_ && 
+      local.mapping_region_.CanMerge(block, next_block)) {
     // LOG(INFO)  << "is small " << block->is_small << "free_list " <<
     // free_list.size();
     free_list.erase(next_block->iter_free_block_list);

@@ -11,6 +11,13 @@ set(C_MODULE_LIBRARIES pybind11::headers pages_pool allocator)
 set(C_MODULE_HEADERS .)
 set(C_MODULE_DEFINITION)
 
+  # FIX ME: torch allocator is not compatible with new version of pytorch
+if (ENABLE_TORCH AND (Torch_VERSION VERSION_GREATER_EQUAL "2.1"))
+  set(ENABLE_TORCH OFF)
+  message(WARNING 
+      "mpool PyTorch allocator is not compatible with PyTorch version ${Torch_VERSION}.")
+endif()
+
 if (ENABLE_TORCH)
   message("PyTorch build is enabled.")
 

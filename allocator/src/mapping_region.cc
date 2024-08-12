@@ -171,8 +171,6 @@ void DynamicMappingRegion::UnMapPages(const std::vector<index_t> &unmap_pages) {
   } while (iter != unmap_pages.cend());
 }
 
-
-
 void DynamicMappingRegion::EmptyCacheAndUpdateFlags(bip_list<shm_ptr<MemBlock>> &block_list) {
   LOG_IF(INFO, VERBOSE_LEVEL >= 1) << "EmptyCache";
   std::vector<index_t> release_pages;
@@ -324,8 +322,8 @@ StaticMappingRegion::StaticMappingRegion(
       shared_global_mappings_.push_back(k);
     }
   }
-
 }
+
 DynamicMappingRegion::DynamicMappingRegion(
     SharedMemory &shared_memory, PagesPool &page_pool, Belong belong,
     std::string log_prefix, size_t va_range_scale,
@@ -334,4 +332,5 @@ DynamicMappingRegion::DynamicMappingRegion(
         ReportOOM)
     : IMappingRegion(shared_memory, page_pool, belong, log_prefix,
                      va_range_scale, ReportOOM) {}
+
 } // namespace mpool

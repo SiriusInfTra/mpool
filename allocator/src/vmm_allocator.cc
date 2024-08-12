@@ -65,6 +65,7 @@ bool VMMAllocator::CheckStats() {
   CHECK_EQ(stats.mem_block_nbytes[true], this->stats.mem_block_nbytes[true]);
   return true;
 }
+
 size_t VMMAllocator::GetDeviceFreeNbytes() const {
   size_t free_nbytes =
       page_pool.GetBelongRegistry().GetFreeBelong().GetPagesNum() *
@@ -73,25 +74,31 @@ size_t VMMAllocator::GetDeviceFreeNbytes() const {
                  belong.GetAllocatedNbytes();
   return free_nbytes;
 }
+
 void VMMAllocator::AddOOMObserver(std::shared_ptr<OOMObserver> observer) {
   oom_observers_.push_back(observer);
 }
+
 void VMMAllocator::RemoveOOMObserver(std::shared_ptr<OOMObserver> observer) {
   oom_observers_.erase(
       std::remove(oom_observers_.begin(), oom_observers_.end(), observer));
 }
+
 std::pair<bip_list_iterator<MemBlock>, bip_list_iterator<MemBlock>>
 VMMAllocator::GetAllBlocks() const {
   return {{all_block_list_.begin(), shared_memory_},
           {all_block_list_.end(), shared_memory_}};
 }
-void VMMAllocator::ResetPeakStats() { stats.ResetPeakStats(); }
+
+void VMMAllocator::ResetPeakStats() { 
+  stats.ResetPeakStats(); 
+}
 
 void VMMAllocator::PrintStreamStats(StreamContext &stream_context) {
   for (auto &&[is_small, label] :
        {std::make_pair(false, "large"), std::make_pair(true, "small")}) {
-    LOG(INFO) << "~~~~~~~~~~ Stream " << stream_context.cuda_stream << " ("
-              << label << ") used / free ~~~~~~~~~~";
+    LOG(INFO) << "~~~~~~~~~~ Stream " << stream_context.cuda_stream 
+              << " (" << label << ") used / free ~~~~~~~~~~";
     std::array<size_t, 2> cnt = {0, 0}, sum = {0, 0}, max = {0, 0},
                           min = {std::numeric_limits<size_t>::max(),
                                  std::numeric_limits<size_t>::max()},

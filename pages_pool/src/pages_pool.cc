@@ -66,8 +66,10 @@ index_t PagesPool::AllocConPages(Belong blg, num_t num_req,
              belong_registery_.GetBelong(*phy_page.belong));
     *phy_page.belong = blg;
   }
+
   blg.Get()->pages_num.fetch_add(num_req, std::memory_order_relaxed);
-  belong_registery_.GetFreeBelong().Get()->pages_num.fetch_sub(num_req, std::memory_order_relaxed);
+  belong_registery_.GetFreeBelong().Get()->pages_num.fetch_sub(
+      num_req, std::memory_order_relaxed);
   return index_begin;
 }
 
@@ -77,6 +79,7 @@ PagesPool::AllocDisPages(Belong blg, num_t num_req,
   LOG_IF(INFO, VERBOSE_LEVEL >= 2)
       << "AllocDisPages: blg=" << blg << ", num_req=" << num_req << ".";
   CHECK(lock.owns());
+
   std::vector<index_t> ret;
   ret.reserve(num_req);
   for (size_t k = 0; k < num_req; ++k) {
@@ -91,8 +94,10 @@ PagesPool::AllocDisPages(Belong blg, num_t num_req,
     *phy_page.belong = blg;
     ret.push_back(index);
   }
+
   blg.Get()->pages_num.fetch_add(ret.size(), std::memory_order_relaxed);
-  belong_registery_.GetFreeBelong().Get()->pages_num.fetch_sub(ret.size(), std::memory_order_relaxed);
+  belong_registery_.GetFreeBelong().Get()->pages_num.fetch_sub(
+      ret.size(), std::memory_order_relaxed);
   return ret;
 }
 
@@ -101,21 +106,26 @@ void PagesPool::FreePages(const std::vector<index_t> &pages, Belong blg,
   LOG_IF(INFO, VERBOSE_LEVEL >= 2)
       << "FreePages: pages=" << pages << ", blg=" << blg;
   CHECK(lock.owns());
+
   for (index_t index : pages) {
     auto &page = phy_pages[index];
     CHECK_EQ(belong_registery_.GetBelong(*page.belong), blg);
     *page.belong = belong_registery_.GetFreeBelong();
     free_list_.ReleasePages(index, 1);
   }
+
   blg.Get()->pages_num.fetch_sub(pages.size(), std::memory_order_relaxed);
-  belong_registery_.GetFreeBelong().Get()->pages_num.fetch_add(pages.size(), std::memory_order_relaxed);
+  belong_registery_.GetFreeBelong().Get()->pages_num.fetch_add(
+      pages.size(), std::memory_order_relaxed);
 }
 
 PagesPool::~PagesPool() {
   LOG(INFO) << config.log_prefix << "Release PagesPool";
 }
 
-BelongRegistry &PagesPool::GetBelongRegistry() { return belong_registery_; }
+BelongRegistry &PagesPool::GetBelongRegistry() { 
+  return belong_registery_; 
+}
 
 void PagesPool::PrintStats() {
   for (auto belong : belong_registery_.GetBelongs()) {

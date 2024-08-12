@@ -68,7 +68,8 @@ public:
 
   void RemoveOOMObserver(std::shared_ptr<OOMObserver> observer);
 
-  virtual void ReportOOM(cudaStream_t cuda_stream, OOMReason reason, bool force_abort = true) {
+  virtual void ReportOOM(cudaStream_t cuda_stream, OOMReason reason, 
+                         bool force_abort = true) {
     for (auto ptr : oom_observers_) {
       auto &oom_observer = *ptr.get();
       oom_observer(page_pool.config.device_id, cuda_stream, reason);

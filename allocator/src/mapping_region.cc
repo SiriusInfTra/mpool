@@ -56,8 +56,8 @@ void DynamicMappingRegion::AllocMappingsAndUpdateFlags(
     }
     if (new_allocated_pages_index.size() < missing_va_mapping_i.size()) {
       LOG(WARNING) << "OOM: Cannot allocate enough pages for block: " << block
-              << ", unalloc_pages = " << block->unalloc_pages
-              << ", allocated_pages = " << missing_va_mapping_i.size() << ".";
+              << ", block_unalloc_pages = " << block->unalloc_pages
+              << ", unsolved_missing_pages = " << missing_va_mapping_i.size() << ".";
       {
         auto lock = page_pool_.Lock();
         page_pool_.FreePages(new_allocated_pages_index, belong, lock);

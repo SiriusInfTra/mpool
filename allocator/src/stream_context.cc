@@ -32,7 +32,7 @@ MemBlock *StreamBlockList::CreateEntryExpandVA(ProcessLocalData &local,
                .nbytes = nbytes,
                .stream = current_stream_,
                .unalloc_pages =
-                   local.mapping_region_.CalculateUnallocFlags(addr_offset, nbytes),
+                   local.mapping_region_->CalculateUnallocFlags(addr_offset, nbytes),
                .device_id = device_id,
                .is_free = false,
                .is_small = nbytes < small_block_nbytes_};
@@ -95,9 +95,9 @@ MemBlock *StreamBlockList::SplitBlock(ProcessLocalData &local,
   origin_entry->nbytes = remain;
 
   if (origin_entry->unalloc_pages > 0) {
-    insert_after_entry->unalloc_pages = local.mapping_region_.CalculateUnallocFlags(
+    insert_after_entry->unalloc_pages = local.mapping_region_->CalculateUnallocFlags(
         insert_after_entry->addr_offset, insert_after_entry->nbytes);
-    origin_entry->unalloc_pages = local.mapping_region_.CalculateUnallocFlags(
+    origin_entry->unalloc_pages = local.mapping_region_->CalculateUnallocFlags(
         origin_entry->addr_offset, origin_entry->nbytes);
   }
 
@@ -119,7 +119,7 @@ MemBlock *StreamBlockList::MergeMemEntry(ProcessLocalData &local,
 
   first_block->nbytes += secound_block->nbytes;
   if (first_block->unalloc_pages > 0 || secound_block->unalloc_pages > 0) {
-    first_block->unalloc_pages = local.mapping_region_.CalculateUnallocFlags(
+    first_block->unalloc_pages = local.mapping_region_->CalculateUnallocFlags(
         first_block->addr_offset, first_block->nbytes);
   }
 
@@ -170,6 +170,9 @@ MemBlock *StreamFreeList::PopBlock(ProcessLocalData &local, bool is_small,
           block1->unalloc_pages < optimal_block->unalloc_pages) {
         optimal_block = block1;
         optimal_iter = iter1;
+        if (optimal_block->unalloc_pages == 0) {
+          break;
+        }
       }
     }
     block = optimal_block;
@@ -237,7 +240,7 @@ MemBlock *StreamFreeList::PushBlock(ProcessLocalData &local, MemBlock *block) {
       prev_block && prev_block->is_free &&
       prev_block->is_small == block->is_small &&
       prev_block->unalloc_pages == 0 && prev_block->stream == current_stream_ && 
-      local.mapping_region_.CanMerge(prev_block, block)) {
+      local.mapping_region_->CanMerge(prev_block, block)) {
     // LOG(INFO)  << "is small " << block->is_small << "free_list " <<
     // free_list.size();
     free_list.erase(prev_block->iter_free_block_list);
@@ -247,7 +250,7 @@ MemBlock *StreamFreeList::PushBlock(ProcessLocalData &local, MemBlock *block) {
       next_block && next_block->is_free &&
       next_block->is_small == block->is_small &&
       next_block->unalloc_pages == 0 && next_block->stream == current_stream_ && 
-      local.mapping_region_.CanMerge(block, next_block)) {
+      local.mapping_region_->CanMerge(block, next_block)) {
     // LOG(INFO)  << "is small " << block->is_small << "free_list " <<
     // free_list.size();
     free_list.erase(next_block->iter_free_block_list);
@@ -336,10 +339,10 @@ bool StreamBlockList::CheckState(ProcessLocalData &local,
       LOG(FATAL) << "block's stream is not current stream: " << block << ".";
       return false;
     }
-    if (int32_t unalloc_pages = local.mapping_region_.CalculateUnallocFlags(
+    if (int32_t unalloc_pages = local.mapping_region_->CalculateUnallocFlags(
             block->addr_offset, block->nbytes);
         block->unalloc_pages != unalloc_pages) {
-      LOG(INFO) << local.mapping_region_.CalculateUnallocFlags(block->addr_offset,
+      LOG(INFO) << local.mapping_region_->CalculateUnallocFlags(block->addr_offset,
                                                          block->nbytes);
       LOG(FATAL) << "block's unalloc_pages is not match: " << block
                  << ", ground truth: " << unalloc_pages << ".";

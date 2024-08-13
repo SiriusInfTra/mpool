@@ -185,7 +185,7 @@ public:
 struct ProcessLocalData {
   PagesPool &page_pool_;
   SharedMemory &shared_memory_;
-  IMappingRegion &mapping_region_;
+  IMappingRegion *mapping_region_;
   bip_list<shm_ptr<MemBlock>> &all_block_list_;
   bip_map<ptrdiff_t, shm_ptr<MemBlock>> &all_block_map_;
 };

@@ -15,7 +15,8 @@ using VMMAllocatorConfig = VMMAllocatorConfig;
 class DirectAllocator : public VMMAllocator {
 private:
   StaticMappingRegion mapping_region_;
-  ProcessLocalData process_local_;
+
+  void DumpStateWithLock();
 
 public:
   DirectAllocator(SharedMemory &shared_memory, PagesPool &page_pool,

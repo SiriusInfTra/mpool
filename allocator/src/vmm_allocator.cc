@@ -1,3 +1,4 @@
+#include <filesystem>
 #include <mpool/stats.h>
 #include <mpool/caching_allocator.h>
 #include <mpool/mapping_region.h>
@@ -8,6 +9,7 @@
 
 #include <cstddef>
 #include <utility>
+#include <fstream>
 
 #include <boost/unordered_map.hpp>
 
@@ -33,7 +35,9 @@ VMMAllocator::VMMAllocator(SharedMemory &shared_memory, PagesPool &page_pool,
       global_stream_context_(*shared_memory_->find_or_construct<StreamContext>(
           "CA_global_stream_context")(shared_memory_,
                                       page_pool.config.device_id, nullptr,
-                                      this->config.small_block_nbytes, stats)) {
+                                      this->config.small_block_nbytes, stats)),
+      process_local_{page_pool, shared_memory, nullptr,
+                     all_block_list_, all_block_map_} {
   LOG_IF(INFO, VERBOSE_LEVEL >= 1)
       << this->config.log_prefix << "Init VMMAllocator";
 };
@@ -131,6 +135,46 @@ void VMMAllocator::PrintStreamStats(StreamContext &stream_context) {
     LOG(INFO) << "avg: " << ByteDisplay(avg[0]) << " / " << ByteDisplay(avg[1]);
     LOG(INFO) << "max: " << ByteDisplay(max[0]) << " / " << ByteDisplay(max[1]);
     LOG(INFO) << "min: " << ByteDisplay(min[0]) << " / " << ByteDisplay(min[1]);
+  }
+}
+void VMMAllocator::DumpState(std::vector<StreamContext*> stream_contexts) {
+  auto now = std::chrono::system_clock::now();
+  auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                now.time_since_epoch()) %
+            1000;
+  auto in_time_t = std::chrono::system_clock::to_time_t(now);
+  std::stringstream ss;
+  ss << "mempool_dump_"
+     << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d_%H-%M-%S") << "_"
+     << ms.count();
+  auto output_dir = std::filesystem::temp_directory_path() / ss.str();
+  LOG(WARNING) << "Dump state to " << output_dir << ".";
+  CHECK(std::filesystem::create_directory(output_dir));
+  for (auto *stream_context : stream_contexts) {
+    {
+      std::ofstream o_handle{
+          output_dir / (std::string{"block_list_"} +
+                        std::to_string(reinterpret_cast<size_t>(stream_context->cuda_stream)))};
+      CHECK(o_handle.is_open());
+      stream_context->stream_block_list.DumpStreamBlockList(process_local_,
+                                                            o_handle);
+    }
+    {
+      std::ofstream o_handle{
+          output_dir / (std::string{"free_list_small_"} +
+                        std::to_string(reinterpret_cast<size_t>(stream_context->cuda_stream)))};
+      CHECK(o_handle.is_open());
+      stream_context->stream_free_list.DumpFreeBlockList(process_local_, true,
+                                                         o_handle);
+    }
+    {
+      std::ofstream o_handle{
+          output_dir / (std::string{"free_list_large_"} +
+                        std::to_string(reinterpret_cast<size_t>(stream_context->cuda_stream)))};
+      CHECK(o_handle.is_open());
+      stream_context->stream_free_list.DumpFreeBlockList(process_local_, false,
+                                                         o_handle);
+    }
   }
 }
 } // namespace mpool

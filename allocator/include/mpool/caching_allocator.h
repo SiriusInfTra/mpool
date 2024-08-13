@@ -1,5 +1,6 @@
 #pragma once
 
+#include "mpool/stream_context.h"
 #include <boost/interprocess/sync/scoped_lock.hpp>
 #include <mpool/vmm_allocator.h>
 
@@ -7,7 +8,7 @@ namespace mpool {
 class CachingAllocator : public VMMAllocator {
 private:
   DynamicMappingRegion mapping_region_;
-  ProcessLocalData process_local_;
+
   bip_unordered_map<cudaStream_t, shm_ptr<StreamContext>> &stream_context_map_;
 
   StreamContext &GetStreamContext(cudaStream_t cuda_stream,
@@ -20,7 +21,10 @@ private:
 
   MemBlock *AllocWithLock(size_t nbytes, cudaStream_t cuda_stream, bool try_expand_VA,
                    bip::scoped_lock<bip::interprocess_mutex> &lock);
+
   bool CheckStateInternal(const bip::scoped_lock<bip_mutex> &lock);
+
+  void DumpStateWithLock();
 
 public:
   CachingAllocator(SharedMemory &shared_memory, PagesPool &page_pool,
@@ -43,8 +47,6 @@ public:
   shm_ptr<MemBlock> SendMemBlock(MemBlock *mem_block);
 
   void EmptyCache();
-
-  void DumpState();
 
   void ReportOOM(cudaStream_t cuda_stream, OOMReason reason, bool force_abort) override;
 };

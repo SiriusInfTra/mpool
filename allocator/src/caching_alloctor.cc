@@ -7,8 +7,6 @@
 #include <mpool/stats.h>
 #include <mpool/util.h>
 
-#include <filesystem>
-#include <fstream>
 
 #include <boost/unordered_map.hpp>
 
@@ -27,12 +25,11 @@ CachingAllocator::CachingAllocator(SharedMemory &shared_memory,
           [&](int device_id, cudaStream_t cuda_stream, OOMReason reason) {
             ReportOOM(cuda_stream, reason, true);
           }),
-      process_local_{page_pool, shared_memory, mapping_region_, all_block_list_,
-                     all_block_map_},
       stream_context_map_(
           *shared_memory_->find_or_construct<
               bip_unordered_map<cudaStream_t, shm_ptr<StreamContext>>>(
               "CA_stream_context_map")(shared_memory_->get_segment_manager())) {
+    process_local_.mapping_region_ = &mapping_region_;
 }
 
 StreamContext &
@@ -63,7 +60,7 @@ CachingAllocator::AllocWithContext(size_t nbytes, StreamContext &stream_context,
   // LOG(INFO) << free_block << " is small " << is_small;
   if (free_block == nullptr && is_small) {
     free_block = stream_context.stream_free_list.PopBlock(
-        process_local_, false, config.small_block_nbytes, 50);
+        process_local_, false, config.small_block_nbytes, 100);
     if (free_block != nullptr) {
       stats.SetBlockIsSmall(free_block, true);
       free_block =
@@ -243,46 +240,7 @@ void CachingAllocator::EmptyCache() {
   CHECK(CHECK_LEVEL < 1 || CheckStateInternal(lock));
 };
 
-void CachingAllocator::DumpState() {
-  auto now = std::chrono::system_clock::now();
-  auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                now.time_since_epoch()) %
-            1000;
-  auto in_time_t = std::chrono::system_clock::to_time_t(now);
-  std::stringstream ss;
-  ss << "mempool_dump_"
-     << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d_%H-%M-%S") << "_"
-     << ms.count();
-  auto output_dir = std::filesystem::temp_directory_path() / ss.str();
-  CHECK(std::filesystem::create_directory(output_dir));
-  for (auto &[stream, handle] : stream_context_map_) {
-    auto stream_context = handle.ptr(shared_memory_);
-    {
-      std::ofstream o_handle{
-          output_dir / (std::string{"block_list_"} +
-                        std::to_string(reinterpret_cast<size_t>(stream)))};
-      CHECK(o_handle.is_open());
-      stream_context->stream_block_list.DumpStreamBlockList(process_local_,
-                                                            o_handle);
-    }
-    {
-      std::ofstream o_handle{
-          output_dir / (std::string{"free_list_small_"} +
-                        std::to_string(reinterpret_cast<size_t>(stream)))};
-      CHECK(o_handle.is_open());
-      stream_context->stream_free_list.DumpFreeBlockList(process_local_, true,
-                                                         o_handle);
-    }
-    {
-      std::ofstream o_handle{
-          output_dir / (std::string{"free_list_large_"} +
-                        std::to_string(reinterpret_cast<size_t>(stream)))};
-      CHECK(o_handle.is_open());
-      stream_context->stream_free_list.DumpFreeBlockList(process_local_, false,
-                                                         o_handle);
-    }
-  }
-}
+
 
 bool CachingAllocator::CheckStateInternal(
     const bip::scoped_lock<bip_mutex> &lock) {
@@ -307,7 +265,15 @@ void CachingAllocator::ReportOOM(cudaStream_t cuda_stream, OOMReason reason,
   for (auto &&[_, handle] : stream_context_map_) {
     PrintStreamStats(*handle.ptr(shared_memory_));
   }
+  DumpStateWithLock();
   LOG_IF(FATAL, force_abort) << config.log_prefix << "Abort.";
 }
 
+void CachingAllocator::DumpStateWithLock() {
+  std::vector<StreamContext *> stream_contexts;
+  for (auto &&[_, context] : stream_context_map_) {
+    stream_contexts.push_back(context.ptr(shared_memory_));
+  }
+  VMMAllocator::DumpState(stream_contexts);
+}
 } // namespace mpool

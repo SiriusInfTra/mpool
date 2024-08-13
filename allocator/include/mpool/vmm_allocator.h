@@ -52,6 +52,7 @@ protected:
 
 
   StreamContext &global_stream_context_;
+  ProcessLocalData process_local_;
 
   std::vector<std::shared_ptr<OOMObserver>> oom_observers_;
 
@@ -92,6 +93,8 @@ public:
   }
 
   void ResetPeakStats();
+
+  void DumpState(std::vector<StreamContext*> stream_contexts);
 };
 
 } // namespace mpool

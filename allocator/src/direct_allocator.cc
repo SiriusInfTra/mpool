@@ -1,3 +1,5 @@
+#include <boost/interprocess/sync/scoped_lock.hpp>
+#include <mpool/util.h>
 #include <mpool/direct_allocator.h>
 
 #include <glog/logging.h>
@@ -8,17 +10,18 @@ DirectAllocator::DirectAllocator(SharedMemory &shared_memory,
                                  VMMAllocatorConfig config, bool first_init)
     : VMMAllocator(shared_memory, page_pool, config, first_init),
       mapping_region_(
-          shared_memory_, page_pool, belong, this->config.log_prefix,
-          this->config.va_range_scale,
-          [&](int device_id, cudaStream_t cuda_stream, OOMReason reason) {
-            ReportOOM(cuda_stream, reason, true);
-          }),
-      process_local_{page_pool, shared_memory, mapping_region_,
-                     all_block_list_, all_block_map_} {
+        shared_memory_, page_pool, belong, this->config.log_prefix,
+        this->config.va_range_scale,
+        [&](int device_id, cudaStream_t cuda_stream, OOMReason reason) 
+        { ReportOOM(cuda_stream, reason, true); }
+) {
+  process_local_.mapping_region_ = &mapping_region_;
   auto *mem_block =
       global_stream_context_.stream_block_list.CreateEntryExpandVA(
           process_local_, mapping_region_.GetVARangeNBytes());
+  LOG(WARNING) << "DirectAllocator::DirectAllocator " << ByteDisplay(mapping_region_.GetVARangeNBytes());
   global_stream_context_.stream_free_list.PushBlock(process_local_, mem_block);
+
 }
 
 MemBlock *DirectAllocator::Alloc(size_t request_nbytes, size_t alignment,
@@ -30,12 +33,8 @@ MemBlock *DirectAllocator::Alloc(size_t request_nbytes, size_t alignment,
   if (request_nbytes >= page_pool.config.page_nbytes) {
     alignment = std::max(alignment, page_pool.config.page_nbytes);
   }
-  if (request_nbytes == 19429920) {
-    size_t debug_here = 555;
-    LOG(INFO) << debug_here;
-  }
   request_nbytes = AlignToPages(request_nbytes);
-
+  bip::scoped_lock lock{shared_memory_.GetMutex()};
   if (request_nbytes < page_pool.config.page_nbytes) {
     auto *mem_block = global_stream_context_.stream_free_list.PopBlock(
         process_local_, true, request_nbytes, 0);
@@ -59,7 +58,7 @@ MemBlock *DirectAllocator::Alloc(size_t request_nbytes, size_t alignment,
           process_local_, false, addr_offset, nbytes);
       stats.SetBlockIsSmall(mem_block, true);
       if (request_nbytes < nbytes) {
-        global_stream_context_.stream_free_list.PushBlock(process_local_,
+        mem_block = global_stream_context_.stream_free_list.PushBlock(process_local_,
                                                           mem_block);
         mem_block = global_stream_context_.stream_free_list.PopBlock(
             process_local_, true, request_nbytes, 0);
@@ -92,6 +91,7 @@ MemBlock *DirectAllocator::Alloc(size_t request_nbytes, size_t alignment,
 }
 
 void DirectAllocator::Free(const MemBlock *block, size_t flags) {
+ bip::scoped_lock lock{shared_memory_.GetMutex()};
   if (!block->is_small) {
     index_t page_begin = mapping_region_.ByteOffsetToIndex(block->addr_offset);
     num_t pages_cnt = block->nbytes / page_pool.config.page_nbytes;
@@ -128,7 +128,11 @@ void DirectAllocator::ReportOOM(cudaStream_t cuda_stream, OOMReason reason,
   VMMAllocator::ReportOOM(cuda_stream, reason, force_abort);
   page_pool.PrintStats();
   PrintStreamStats(global_stream_context_);
+  DumpStateWithLock();
   LOG_IF(FATAL, force_abort) << config.log_prefix << "Abort.";
 }
 
+void DirectAllocator::DumpStateWithLock() {
+  VMMAllocator::DumpState({&global_stream_context_});
+}
 } // namespace mpool

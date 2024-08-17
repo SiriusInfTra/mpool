@@ -24,10 +24,12 @@ void CUDAIpcTransfer::BindServer(int &socket_fd) {
       0)
       << log_prefix_ << "Bind error.";
 }
+
 void CUDAIpcTransfer::UnlinkServer(int socket_fd) {
   unlink(("/dev/shm/" + server_sock_name_).c_str());
   close(socket_fd);
 }
+
 void CUDAIpcTransfer::BindClient(int &socket_fd) {
   LOG_IF(INFO, VERBOSE_LEVEL >= 2) << log_prefix_ << "BIND CLIENT.";
   struct sockaddr_un client_addr;
@@ -46,10 +48,12 @@ void CUDAIpcTransfer::BindClient(int &socket_fd) {
       0)
       << log_prefix_ << "Bind fail.";
 }
+
 void CUDAIpcTransfer::UnlinkClient(int socket_fd) {
   unlink(("/dev/shm" + client_sock_name_).c_str());
   close(socket_fd);
 }
+
 void CUDAIpcTransfer::Receive(int fd_list[], size_t len, int socket_fd) {
   LOG_IF(INFO, VERBOSE_LEVEL >= 1) << log_prefix_ <<  "RECEIVE.";
   struct msghdr msg = {0};
@@ -81,6 +85,7 @@ void CUDAIpcTransfer::Receive(int fd_list[], size_t len, int socket_fd) {
   CHECK_EQ(cmptr->cmsg_level, SOL_SOCKET) << log_prefix_ << "Bad cmsg received.";
   CHECK_EQ(cmptr->cmsg_type, SCM_RIGHTS) << log_prefix_ << "Bad cmsg received.";
 }
+
 void CUDAIpcTransfer::Send(int fd_list[], size_t len, int socket_fd) {
   LOG_IF(INFO, VERBOSE_LEVEL >= 2) << log_prefix_ << "SEND";
   struct msghdr msg;
@@ -116,6 +121,7 @@ void CUDAIpcTransfer::Send(int fd_list[], size_t len, int socket_fd) {
   ssize_t send_result = sendmsg(socket_fd, &msg, 0);
   CHECK_GE(send_result, 0) << log_prefix_ << "Send msg fail.";
 }
+
 CUDAIpcTransfer::CUDAIpcTransfer(SharedMemory &shared_memory,
                                  std::vector<PhyPage> &phy_pages_ref,
                                  const PagesPoolConf &conf)
@@ -246,6 +252,7 @@ MessageQueue::MessageQueue(SharedMemory &shared_memory) : is_close(false) {
   message_queue_ = shared_memory->find_or_construct<bip_list<Event>>("MQ_mq")(
       shared_memory->get_segment_manager());
 }
+
 bool MessageQueue::WaitEvent(Event event, bool interruptable) {
   bip::scoped_lock lock{*mutex};
   LOG_IF(INFO, VERBOSE_LEVEL >= 3) << "WaitEvent " << event << ".";
@@ -265,6 +272,7 @@ bool MessageQueue::WaitEvent(Event event, bool interruptable) {
   return false;
 
 }
+
 void MessageQueue::RecordEvent(Event event) {
   bip::scoped_lock lock{*mutex};
   LOG_IF(INFO, VERBOSE_LEVEL >= 3) << "RecordEvent " << event << "."; 
@@ -272,6 +280,7 @@ void MessageQueue::RecordEvent(Event event) {
   cond->notify_all();
   LOG_IF(INFO, VERBOSE_LEVEL >= 3) << "CURRENT LIST: " << *message_queue_;
 }
+
 void MessageQueue::Close() {
   is_close = true;
   cond->notify_all();

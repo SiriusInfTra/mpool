@@ -101,8 +101,8 @@ private:
 
 public:
   CUDAIpcTransfer(SharedMemory &shared_memory,
-                    std::vector<PhyPage> &phy_pages_ref,
-                    const PagesPoolConf &conf);
+                  std::vector<PhyPage> &phy_pages_ref,
+                  const PagesPoolConf &conf);
 
   ~CUDAIpcTransfer();
 

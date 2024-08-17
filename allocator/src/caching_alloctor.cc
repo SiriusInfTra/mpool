@@ -37,7 +37,7 @@ CachingAllocator::GetStreamContext(cudaStream_t cuda_stream,
                                    const bip::scoped_lock<bip_mutex> &lock) {
   auto iter = stream_context_map_.find(cuda_stream);
   if (iter == stream_context_map_.end()) {
-    LOG(INFO) << "Init Stream context";
+    DLOG(INFO) << "Init Stream context";
     auto *context = new (shared_memory_->allocate(sizeof(StreamContext)))
         StreamContext{process_local_.shared_memory_, page_pool.config.device_id,
                       cuda_stream, config.small_block_nbytes, stats};

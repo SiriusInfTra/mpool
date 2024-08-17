@@ -47,7 +47,7 @@ PagesPool::PagesPool(SharedMemory &shared_memory, PagesPoolConf conf,
   }
 
   free_list_.Init(config.pool_nbytes / config.page_nbytes);
-  LOG(INFO) << config.log_prefix << "Init PagesPool OK.";
+  DLOG(INFO) << config.log_prefix << "Init PagesPool OK.";
 }
 
 index_t PagesPool::AllocConPages(Belong blg, num_t num_req,

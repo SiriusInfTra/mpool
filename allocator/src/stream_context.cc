@@ -111,7 +111,7 @@ MemBlock *StreamBlockList::MergeMemEntry(ProcessLocalData &local,
                                          MemBlock *first_block,
                                          MemBlock *secound_block) {
   CHECK_EQ(first_block->addr_offset + first_block->nbytes,
-           secound_block->addr_offset);
+           (size_t)secound_block->addr_offset);
   CHECK_EQ(first_block->is_free, secound_block->is_free);
   CHECK_EQ(first_block->is_small, secound_block->is_small);
   CHECK_EQ(first_block->ref_count, 0);
@@ -229,7 +229,7 @@ MemBlock *StreamFreeList::ResizeBlock(ProcessLocalData &local, MemBlock *block, 
 
 MemBlock *StreamFreeList::PushBlock(ProcessLocalData &local, MemBlock *block) {
   LOG_IF(INFO, VERBOSE_LEVEL >= 2) << "PushBlock " << *block;
-  CHECK_GT(block->nbytes, 0) << block;
+  CHECK_GT(block->nbytes, 0ULL) << block;
   auto &free_list = free_block_list_[block->is_small];
   // NOTE: this block already free
   auto *stat = stats_.ptr(local.shared_memory_);

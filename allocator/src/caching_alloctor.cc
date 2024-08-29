@@ -164,10 +164,10 @@ MemBlock *CachingAllocator::Alloc(size_t nbytes, size_t alignment,
       << "Alloc " << ByteDisplay(nbytes) << ", stream = " << cuda_stream
       << ", flags = " << flags << ".";
   CHECK(IsPower2(alignment));
-  CHECK_GT(nbytes, 0);
+  CHECK_GT(nbytes, 0ULL);
   size_t nbytes_with_alignment = AlignNbytes(nbytes, alignment);
   bip::scoped_lock lock{shared_memory_.GetMutex()};
-  CHECK_GT(nbytes_with_alignment, 0);
+  CHECK_GT(nbytes_with_alignment, 0ULL);
   return AllocWithLock(nbytes_with_alignment, cuda_stream,
                        flags & VMMAllocator::ALLOC_TRY_EXPAND_VA, lock);
 }
@@ -180,7 +180,7 @@ MemBlock *CachingAllocator::Realloc(MemBlock *block, size_t nbytes,
       << ", alignment = " << alignment << ", stream = " << cuda_stream
       << ", flags = " << flags << ".";
   bool fallback_memcpy = flags & REALLOC_FALLBACK_MEMCPY;
-  CHECK_GT(nbytes, 0);
+  CHECK_GT(nbytes, 0ULL);
   CHECK(IsPower2(alignment));
   size_t nbytes_with_alignment = AlignNbytes(nbytes, alignment);
   bip::scoped_lock lock{shared_memory_.GetMutex()};

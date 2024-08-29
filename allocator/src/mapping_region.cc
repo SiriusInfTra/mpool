@@ -42,7 +42,7 @@ void DynamicMappingRegion::AllocMappingsAndUpdateFlags(
         missing_va_mapping_i.push_back(index);
       }
     }
-    CHECK_EQ(block->unalloc_pages, missing_va_mapping_i.size()) 
+    CHECK_EQ(block->unalloc_pages, (int)missing_va_mapping_i.size()) 
         << "Mismatch unalloc pages: " << block << ".";
   }
 
@@ -271,7 +271,7 @@ int DynamicMappingRegion::CalculateUnallocFlags(ptrdiff_t addr_offset,
       unalloc_pages++;
     }
   }
-  DCHECK_LE(unalloc_pages,
+  DCHECK_LE((size_t)unalloc_pages,
             (nbytes + mem_block_nbytes - 1) / mem_block_nbytes + 1)
       << ByteDisplay(nbytes);
   return unalloc_pages;

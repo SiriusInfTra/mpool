@@ -26,7 +26,7 @@ DirectAllocator::DirectAllocator(SharedMemory &shared_memory,
 
 MemBlock *DirectAllocator::Alloc(size_t request_nbytes, size_t alignment,
                                  cudaStream_t cuda_stream, size_t flags) {
-  CHECK_GT(request_nbytes, 0);
+  CHECK_GT(request_nbytes, 0ULL);
   LOG_IF(INFO, VERBOSE_LEVEL >= 1)
       << "Alloc " << ByteDisplay(request_nbytes) << ", stream = " << cuda_stream
       << ", flags = " << flags << ".";

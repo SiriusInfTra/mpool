@@ -246,7 +246,6 @@ MemBlock *StreamFreeList::PushBlock(ProcessLocalData &local, MemBlock *block) {
     // LOG(INFO)  << "is small " << block->is_small << "free_list " <<
     // free_list.size();
     DLOG(INFO) << "PushBlock Merge " << *prev_block << " " << *block;
-    DLOG(INFO) << "PushBlock Merge " << *prev_block << " " << *block;
     free_list.erase(prev_block->iter_free_block_list);
     block = stream_block_list_ptr->MergeMemEntry(local, prev_block, block);
   } else {
@@ -260,7 +259,6 @@ MemBlock *StreamFreeList::PushBlock(ProcessLocalData &local, MemBlock *block) {
     // LOG(INFO)  << "is small " << block->is_small << "free_list " <<
     // free_list.size();
     DLOG(INFO) << "PushBlock Merge " << *block << " " << *next_block;
-    DLOG(INFO) << "PushBlock Merge " << *block << " " << *next_block;
     free_list.erase(next_block->iter_free_block_list);
     block = stream_block_list_ptr->MergeMemEntry(local, block, next_block);
   } else {
@@ -271,7 +269,6 @@ MemBlock *StreamFreeList::PushBlock(ProcessLocalData &local, MemBlock *block) {
       std::make_pair(block->nbytes, shm_ptr{block, local.shared_memory_}));
   // LOG(INFO)  << "is small " << block->is_small << "free_list " <<
   // free_list.size();
-  DLOG(INFO) << "PushBlock Return: " << *block;
   DLOG(INFO) << "PushBlock Return: " << *block;
   return block;
 }
@@ -286,15 +283,15 @@ MemBlock *StreamFreeList::MaybeMergeAdj(ProcessLocalData &local,
   auto *stream_block_list_ptr = stream_block_list_.ptr(local.shared_memory_);
   auto *prev_block = stream_block_list_ptr->GetPrevEntry(local, entry);
   // guarantee prev_block is shouldn't be merge when pushed freelist
-  DCHECK(prev_block == nullptr || !prev_block->is_free
+  DCHECK(prev_block == nullptr || !prev_block->is_free 
     || !prev_block->is_small || prev_block->unalloc_pages > 0 
-    || prev_block->stream != entry->stream)
+    || prev_block->stream != current_stream_)
     << "Curr: " << entry << "Prev: "  << prev_block << "Stream: " << current_stream_;
   auto *next_block = stream_block_list_ptr->GetNextEntry(local, entry);
   // guarantee next_block is shouldn't be merge when pushed freelist
   DCHECK(next_block == nullptr || !next_block->is_free
-    ||!next_block->is_small || next_block->unalloc_pages > 0
-    || next_block->stream != entry->stream)
+    || !next_block->is_small || next_block->unalloc_pages > 0
+    || next_block->stream != current_stream_)
     << "Curr: " << entry << "Next: " << next_block << "Stream: " << current_stream_;
   bool put_free_list_large = true;
   size_t total_nbytes = entry->nbytes;

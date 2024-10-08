@@ -285,34 +285,17 @@ MemBlock *StreamFreeList::MaybeMergeAdj(ProcessLocalData &local,
   CHECK(entry->is_small) << entry;
   auto *stream_block_list_ptr = stream_block_list_.ptr(local.shared_memory_);
   auto *prev_block = stream_block_list_ptr->GetPrevEntry(local, entry);
-  // make sure prev_block is adjacent to entry
-  if (prev_block != nullptr && prev_block->addr_offset + static_cast<ptrdiff_t>(prev_block->nbytes) != entry->addr_offset) {
-    prev_block = nullptr;
-  }
   // guarantee prev_block is shouldn't be merge when pushed freelist
-  // make sure prev_block is adjacent to entry
-  if (prev_block != nullptr && prev_block->addr_offset + static_cast<ptrdiff_t>(prev_block->nbytes) != entry->addr_offset) {
-    prev_block = nullptr;
-  }
-  // guarantee prev_block is shouldn't be merge when pushed freelist
-  DCHECK(prev_block == nullptr || !prev_block->is_free ||
-         !prev_block->is_small || prev_block->unalloc_pages > 0)
-      << "Curr: " << entry << "Prev: "  << prev_block << "Stream: " << current_stream_;
-      << "Curr: " << entry << "Prev: "  << prev_block << "Stream: " << current_stream_;
+  DCHECK(prev_block == nullptr || !prev_block->is_free
+    || !prev_block->is_small || prev_block->unalloc_pages > 0 
+    || prev_block->stream != entry->stream)
+    << "Curr: " << entry << "Prev: "  << prev_block << "Stream: " << current_stream_;
   auto *next_block = stream_block_list_ptr->GetNextEntry(local, entry);
-  // make sure next_block is adjacent to entry
-  if (next_block != nullptr && entry->addr_offset + static_cast<ptrdiff_t>(entry->nbytes) != next_block->addr_offset) {
-    next_block = nullptr;
-  }
   // guarantee next_block is shouldn't be merge when pushed freelist
-  // make sure next_block is adjacent to entry
-  if (next_block != nullptr && entry->addr_offset + static_cast<ptrdiff_t>(entry->nbytes) != next_block->addr_offset) {
-    next_block = nullptr;
-  }
-  // guarantee next_block is shouldn't be merge when pushed freelist
-  DCHECK(next_block == nullptr || !next_block->is_free ||
-         !next_block->is_small || next_block->unalloc_pages > 0)
-      << "Curr: " << entry << "Next: " << next_block << "Stream: " << current_stream_;
+  DCHECK(next_block == nullptr || !next_block->is_free
+    ||!next_block->is_small || next_block->unalloc_pages > 0
+    || next_block->stream != entry->stream)
+    << "Curr: " << entry << "Next: " << next_block << "Stream: " << current_stream_;
   bool put_free_list_large = true;
   size_t total_nbytes = entry->nbytes;
   for (auto *adj_block : {prev_block, next_block}) {

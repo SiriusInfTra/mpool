@@ -10,6 +10,7 @@
 #include <mpool/pages_pool.h>
 #include <mpool/shm.h>
 #include <mpool/util.h>
+#include <vector>
 
 #define PAGE_INDEX_L(block) ((block)->addr_offset / mem_block_nbytes)
 #define PAGE_INDEX_R(block)                                                    \
@@ -62,18 +63,15 @@ public:
   EmptyCacheAndUpdateFlags(bip_list<shm_ptr<MemBlock>> &all_block_list) = 0;
 
   /**
-   * @brief Allocates mappings for a memory block and updates the flags.
+   * @brief Allocates mappings for a memory block.
    *
    * This function is responsible for allocating mappings for the
    * specified memory block and updating the flags accordingly. The allocated
    * mappings are added to the provided block list.
    *
    * @param block The memory block for which mappings need to be allocated.
-   * @param block_list The list to which the allocated mappings will be added.
    */
-  virtual void
-  AllocMappingsAndUpdateFlags(MemBlock *block,
-                              bip_list<shm_ptr<MemBlock>> &block_list) = 0;
+  virtual std::vector<index_t> AllocMappings(MemBlock *block) = 0;
 
   /**
    * Calculates the unallocated flags for a given address offset and number of
@@ -152,9 +150,8 @@ public:
                          OOMReason reason)>
           ReportOOM);
 
-  void AllocMappingsAndUpdateFlags(
-      MemBlock *block, bip_list<shm_ptr<MemBlock>> &all_block_list) override;
-
+  std::vector<index_t> AllocMappings(MemBlock *block) override;
+  
   void
   EmptyCacheAndUpdateFlags(bip_list<shm_ptr<MemBlock>> &block_list) override;
 
@@ -171,8 +168,9 @@ public:
       std::function<void(int device_id, cudaStream_t cuda_stream,
                          OOMReason reason)>
           ReportOOM);
-  void AllocMappingsAndUpdateFlags(
-      MemBlock *block, bip_list<shm_ptr<MemBlock>> &all_block_list) override {}
+  std::vector<index_t> AllocMappings(MemBlock *block) override {
+    return {};
+  }
 
   void
   EmptyCacheAndUpdateFlags(bip_list<shm_ptr<MemBlock>> &block_list) override {}

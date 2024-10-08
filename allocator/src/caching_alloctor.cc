@@ -99,7 +99,7 @@ MemBlock *CachingAllocator::AllocWithLock(
   }
   CHECK(CHECK_LEVEL < 2 || CheckStateInternal(lock));
   if (block != nullptr) {
-    mapping_region_.AllocMappingsAndUpdateFlags(block, all_block_list_);
+    AllocMappingsAndUpdateFlags(block, lock);
     block->ref_count += 1;
   } else {
     LOG(WARNING) << config.log_prefix
@@ -126,6 +126,7 @@ void CachingAllocator::FreeWithLock(
   if (block->is_small) {
     block = context.stream_free_list.PushBlock(process_local_, block);
     CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
+    DLOG(INFO) << "MaybeMergeAdj 1 " << block;
     block = context.stream_free_list.MaybeMergeAdj(process_local_, block);
     CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
   } else {
@@ -135,6 +136,7 @@ void CachingAllocator::FreeWithLock(
         prev_entry && prev_entry->is_small && prev_entry->is_free &&
         prev_entry->unalloc_pages == 0) {
       size_t prev_entry_nbytes = prev_entry->nbytes;
+      DLOG(INFO) << "MaybeMergeAdj 2 " << block;
       auto *maybe_merged_entry =
           context.stream_free_list.MaybeMergeAdj(process_local_, prev_entry);
       CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
@@ -147,6 +149,7 @@ void CachingAllocator::FreeWithLock(
         next_entry && next_entry->is_small && next_entry->is_free &&
         next_entry->unalloc_pages == 0) {
       size_t next_entry_nbytes = next_entry->nbytes;
+      DLOG(INFO) << "MaybeMergeAdj 3 " << block;
       auto *maybe_merged_entry =
           context.stream_free_list.MaybeMergeAdj(process_local_, next_entry);
       CHECK(CHECK_LEVEL < 3 || CheckStateInternal(lock));
@@ -212,7 +215,7 @@ MemBlock *CachingAllocator::ReceiveMemBlock(shm_ptr<MemBlock> handle) {
   auto *mem_block = handle.ptr(shared_memory_);
   LOG_IF(INFO, VERBOSE_LEVEL >= 0)
       << "Receive MemBlock: " << handle << " -> " << *mem_block << ".";
-  mapping_region_.AllocMappingsAndUpdateFlags(mem_block, all_block_list_);
+  AllocMappingsAndUpdateFlags(mem_block, lock);
   CHECK_GE(mem_block->addr_offset, 0) << "Invalid handle";
   return mem_block;
 }

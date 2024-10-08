@@ -1,3 +1,4 @@
+#include <cstddef>
 #include <iterator>
 #include <tuple>
 #include <unordered_set>
@@ -229,6 +230,7 @@ MemBlock *StreamFreeList::ResizeBlock(ProcessLocalData &local, MemBlock *block, 
 
 MemBlock *StreamFreeList::PushBlock(ProcessLocalData &local, MemBlock *block) {
   LOG_IF(INFO, VERBOSE_LEVEL >= 2) << "PushBlock " << *block;
+  DLOG(INFO) << "PushBlock " << *block;
   CHECK_GT(block->nbytes, 0ULL) << block;
   auto &free_list = free_block_list_[block->is_small];
   // NOTE: this block already free
@@ -243,8 +245,11 @@ MemBlock *StreamFreeList::PushBlock(ProcessLocalData &local, MemBlock *block) {
       local.mapping_region_->CanMerge(prev_block, block)) {
     // LOG(INFO)  << "is small " << block->is_small << "free_list " <<
     // free_list.size();
+    DLOG(INFO) << "PushBlock Merge " << *prev_block << " " << *block;
     free_list.erase(prev_block->iter_free_block_list);
     block = stream_block_list_ptr->MergeMemEntry(local, prev_block, block);
+  } else {
+    DLOG(INFO) << "PushBlock NOT Merge " << prev_block << " " << block;
   }
   if (auto next_block = stream_block_list_ptr->GetNextEntry(local, block);
       next_block && next_block->is_free &&
@@ -253,14 +258,18 @@ MemBlock *StreamFreeList::PushBlock(ProcessLocalData &local, MemBlock *block) {
       local.mapping_region_->CanMerge(block, next_block)) {
     // LOG(INFO)  << "is small " << block->is_small << "free_list " <<
     // free_list.size();
+    DLOG(INFO) << "PushBlock Merge " << *block << " " << *next_block;
     free_list.erase(next_block->iter_free_block_list);
     block = stream_block_list_ptr->MergeMemEntry(local, block, next_block);
+  } else {
+    DLOG(INFO) << "PushBlock NOT Merge " << block << " " << next_block;
   }
 
   block->iter_free_block_list = free_list.insert(
       std::make_pair(block->nbytes, shm_ptr{block, local.shared_memory_}));
   // LOG(INFO)  << "is small " << block->is_small << "free_list " <<
   // free_list.size();
+  DLOG(INFO) << "PushBlock Return: " << *block;
   return block;
 }
 
@@ -273,13 +282,23 @@ MemBlock *StreamFreeList::MaybeMergeAdj(ProcessLocalData &local,
   CHECK(entry->is_small) << entry;
   auto *stream_block_list_ptr = stream_block_list_.ptr(local.shared_memory_);
   auto *prev_block = stream_block_list_ptr->GetPrevEntry(local, entry);
+  // make sure prev_block is adjacent to entry
+  if (prev_block != nullptr && prev_block->addr_offset + static_cast<ptrdiff_t>(prev_block->nbytes) != entry->addr_offset) {
+    prev_block = nullptr;
+  }
+  // guarantee prev_block is shouldn't be merge when pushed freelist
   DCHECK(prev_block == nullptr || !prev_block->is_free ||
          !prev_block->is_small || prev_block->unalloc_pages > 0)
-      << prev_block;
+      << "Curr: " << entry << "Prev: "  << prev_block << "Stream: " << current_stream_;
   auto *next_block = stream_block_list_ptr->GetNextEntry(local, entry);
+  // make sure next_block is adjacent to entry
+  if (next_block != nullptr && entry->addr_offset + static_cast<ptrdiff_t>(entry->nbytes) != next_block->addr_offset) {
+    next_block = nullptr;
+  }
+  // guarantee next_block is shouldn't be merge when pushed freelist
   DCHECK(next_block == nullptr || !next_block->is_free ||
          !next_block->is_small || next_block->unalloc_pages > 0)
-      << next_block;
+      << "Curr: " << entry << "Next: " << next_block << "Stream: " << current_stream_;
   bool put_free_list_large = true;
   size_t total_nbytes = entry->nbytes;
   for (auto *adj_block : {prev_block, next_block}) {

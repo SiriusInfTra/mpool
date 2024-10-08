@@ -23,6 +23,7 @@ class PagesPool {
 public:
     static const constexpr index_t INSUFFICIENT_PAGE = FreeList::INVALID_POS;
     const PagesPoolConf config;
+    const size_t page_num;
 private:
     SharedMemory  &shared_memory_;
 

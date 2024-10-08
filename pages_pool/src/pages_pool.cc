@@ -32,7 +32,8 @@ std::ostream &operator<<(std::ostream &out, std::vector<index_t> vec) {
 
 PagesPool::PagesPool(SharedMemory &shared_memory, PagesPoolConf conf,
                      bool first_init)
-    : config(std::move(conf)), shared_memory_(shared_memory),
+    : config(std::move(conf)), page_num(config.pool_nbytes / config.page_nbytes),
+      shared_memory_(shared_memory),
       free_list_(shared_memory_),
       handle_transfer_(shared_memory_, phy_pages, config),
       belong_registery_(shared_memory_) {

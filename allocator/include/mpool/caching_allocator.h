@@ -11,9 +11,6 @@ private:
 
   bip_unordered_map<cudaStream_t, shm_ptr<StreamContext>> &stream_context_map_;
 
-  StreamContext &GetStreamContext(cudaStream_t cuda_stream,
-                                  const bip::scoped_lock<bip_mutex> &lock);
-
   MemBlock *AllocWithContext(size_t nbytes, StreamContext &stream_context,
                              const bip::scoped_lock<bip_mutex> &lock);
 
@@ -25,6 +22,9 @@ private:
   bool CheckStateInternal(const bip::scoped_lock<bip_mutex> &lock);
 
   void DumpStateWithLock();
+
+  StreamContext &GetStreamContext(cudaStream_t cuda_stream,
+                            const bip::scoped_lock<bip_mutex> &lock) override;
 
 public:
   CachingAllocator(SharedMemory &shared_memory, PagesPool &page_pool,

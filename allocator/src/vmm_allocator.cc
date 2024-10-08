@@ -1,3 +1,4 @@
+#include <boost/interprocess/sync/scoped_lock.hpp>
 #include <filesystem>
 #include <mpool/stats.h>
 #include <mpool/caching_allocator.h>
@@ -174,6 +175,63 @@ void VMMAllocator::DumpState(std::vector<StreamContext*> stream_contexts) {
       CHECK(o_handle.is_open());
       stream_context->stream_free_list.DumpFreeBlockList(process_local_, false,
                                                          o_handle);
+    }
+  }
+}
+void VMMAllocator::AllocMappingsAndUpdateFlags(MemBlock *block, 
+  bip::scoped_lock<bip::interprocess_mutex> &lock) {
+  if (block->addr_offset + block->nbytes > page_pool.config.page_nbytes *
+                                               page_pool.page_num *
+                                               config.va_range_scale) {
+    LOG(WARNING) << "OOM: Cannot reserve VA for block: " << block
+                 << ", addr_offset = " << block->addr_offset
+                 << ", nbytes = " << block->nbytes << ".";
+    ReportOOM(block->stream, OOMReason::NO_VIRTUAL_SPACE);
+    return;
+  }
+  std::vector<index_t> missing_va_mapping_i = process_local_.mapping_region_->AllocMappings(block);
+
+  /* 4. update memory block unalloc_pages flag */
+  if (!missing_va_mapping_i.empty()) {
+    block->unalloc_pages = 0;
+    MemBlock *next_block = block;
+    while ((next_block = global_stream_context_
+        .stream_block_list.GetNextEntry(
+          process_local_, next_block)) != nullptr) {
+      if (process_local_.mapping_region_->ByteOffsetToIndex(
+        next_block->addr_offset) > missing_va_mapping_i.back()) {
+        break;
+      }
+      DCHECK_GE(next_block->unalloc_pages, 1);
+      next_block->unalloc_pages--;
+      DCHECK_EQ(
+          next_block->unalloc_pages,
+          process_local_.mapping_region_->CalculateUnallocFlags(
+            next_block->addr_offset, next_block->nbytes))
+          << next_block;
+      auto &context = GetStreamContext(next_block->stream, lock);
+      next_block = context.stream_free_list.PopBlock(process_local_, next_block);
+      next_block = context.stream_free_list.PushBlock(process_local_, next_block);
+    }
+    MemBlock *prev_block = block;
+    while ((prev_block = global_stream_context_
+      .stream_block_list.GetPrevEntry(
+        process_local_, prev_block)) != nullptr) {
+      if (process_local_.mapping_region_->ByteOffsetToIndex(
+          prev_block->addr_offset + prev_block->nbytes - 1) <
+          missing_va_mapping_i.front()) {
+        break;
+      }
+      DCHECK_GE(prev_block->unalloc_pages, 1);
+      prev_block->unalloc_pages--;
+      DCHECK_EQ(
+          prev_block->unalloc_pages,
+          process_local_.mapping_region_->CalculateUnallocFlags(
+            prev_block->addr_offset, prev_block->nbytes))
+          << prev_block;
+      auto &context = GetStreamContext(prev_block->stream, lock);
+      prev_block = context.stream_free_list.PopBlock(process_local_, prev_block);
+      prev_block = context.stream_free_list.PushBlock(process_local_, prev_block);
     }
   }
 }

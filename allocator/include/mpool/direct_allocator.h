@@ -18,6 +18,11 @@ private:
 
   void DumpStateWithLock();
 
+  StreamContext &GetStreamContext(cudaStream_t cuda_stream,
+                        const bip::scoped_lock<bip_mutex> &lock) override {
+    return global_stream_context_;
+  }
+
 public:
   DirectAllocator(SharedMemory &shared_memory, PagesPool &page_pool,
                   VMMAllocatorConfig config, bool first_init);

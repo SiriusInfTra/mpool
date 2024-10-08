@@ -1,3 +1,4 @@
+#include "mpool/mem_block.h"
 #include <mpool/pages.h>
 #include <mpool/util.h>
 #include <mpool/mapping_region.h>
@@ -291,6 +292,92 @@ bool DynamicMappingRegion::CanMerge(const MemBlock *block_a,
                                     const MemBlock *block_b) {
   return true;
 };
+
+std::vector<index_t> DynamicMappingRegion::AllocMappings(MemBlock *block) {
+  index_t va_range_l_i = PAGE_INDEX_L(block);
+  index_t va_range_r_i = PAGE_INDEX_R(block);
+
+  /* 1. find missing physical pages . */
+  std::vector<index_t> missing_va_mapping_i;
+  if (block->unalloc_pages > 0) {
+    if (shared_global_mappings_.size() < va_range_r_i) {
+      shared_global_mappings_.resize(va_range_r_i, INVALID_INDEX);
+    }
+    for (index_t index = va_range_l_i; index < va_range_r_i; ++index) {
+      if (shared_global_mappings_[index] == INVALID_INDEX) {
+        missing_va_mapping_i.push_back(index);
+      }
+    }
+    CHECK_EQ(block->unalloc_pages, missing_va_mapping_i.size())
+        << "Mismatch unalloc pages: " << block << ".";
+  }
+
+  /* 2. alloc physical pages if necessary */
+  if (!missing_va_mapping_i.empty()) {
+    std::vector<index_t> new_allocated_pages_index;
+    {
+      auto lock = page_pool_.Lock();
+      new_allocated_pages_index =
+          page_pool_.AllocDisPages(belong, missing_va_mapping_i.size(), lock);
+    }
+    if (new_allocated_pages_index.size() < missing_va_mapping_i.size()) {
+      LOG(WARNING) << "OOM: Cannot allocate enough pages for block: " << block
+                   << ", block_unalloc_pages = " << block->unalloc_pages
+                   << ", unsolved_missing_pages = "
+                   << missing_va_mapping_i.size() << ".";
+      {
+        auto lock = page_pool_.Lock();
+        page_pool_.FreePages(new_allocated_pages_index, belong, lock);
+      }
+      ReportOOM(page_pool_.config.device_id, block->stream,
+                OOMReason::NO_PHYSICAL_PAGES);
+      return {};
+    }
+    for (index_t k = 0; k < new_allocated_pages_index.size(); ++k) {
+      shared_global_mappings_[missing_va_mapping_i[k]] =
+          new_allocated_pages_index[k];
+    }
+  }
+
+  /* 3. modify local page table if necessary */
+  if (self_page_table_.size() < va_range_r_i) {
+    self_page_table_.resize(va_range_r_i, nullptr);
+  }
+  index_t min_va_i = std::numeric_limits<index_t>::max();
+  index_t max_va_i = std::numeric_limits<index_t>::min();
+  for (index_t k = va_range_l_i; k < va_range_r_i; ++k) {
+    if (self_page_table_[k] != nullptr &&
+        self_page_table_[k]->index != shared_global_mappings_[k]) {
+      CU_CALL(cuMemUnmap(
+          reinterpret_cast<CUdeviceptr>(base_ptr_ + k * mem_block_nbytes),
+          mem_block_nbytes));
+      self_page_table_[k] = nullptr;
+    }
+    if (self_page_table_[k] == nullptr) {
+      auto &page = page_pool_.PagesView()[shared_global_mappings_[k]];
+      self_page_table_[k] = &page;
+      CHECK_EQ(belong, Belong(*page.belong, shared_memory_));
+      CU_CALL(cuMemMap(
+          reinterpret_cast<CUdeviceptr>(base_ptr_ + k * mem_block_nbytes),
+          mem_block_nbytes, 0, page.cu_handle, 0));
+      min_va_i = std::min(min_va_i, k);
+      max_va_i = std::max(max_va_i, k);
+    }
+    CHECK_EQ(self_page_table_[k]->index, shared_global_mappings_[k]);
+  }
+  if (min_va_i < std::numeric_limits<index_t>::max()) {
+    auto *dev_ptr = base_ptr_ + min_va_i * mem_block_nbytes;
+    size_t nbytes = (max_va_i - min_va_i + 1) * mem_block_nbytes;
+    CUmemAccessDesc acc_desc = {
+        .location = {.type = CU_MEM_LOCATION_TYPE_DEVICE,
+                     .id = page_pool_.config.device_id},
+        .flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE};
+    CU_CALL(cuMemSetAccess(reinterpret_cast<CUdeviceptr>(dev_ptr), nbytes,
+                           &acc_desc, 1));
+  }
+  return missing_va_mapping_i;
+}
+
 StaticMappingRegion::StaticMappingRegion(
     SharedMemory &shared_memory, PagesPool &page_pool, Belong belong,
     std::string log_prefix, size_t va_range_scale,

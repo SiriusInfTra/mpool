@@ -65,6 +65,9 @@ public:
   ~VMMAllocator();
   size_t GetDeviceFreeNbytes() const;
 
+  virtual StreamContext &GetStreamContext(cudaStream_t cuda_stream,
+                                const bip::scoped_lock<bip_mutex> &lock) = 0;
+
   void AddOOMObserver(std::shared_ptr<OOMObserver> observer);
 
   void RemoveOOMObserver(std::shared_ptr<OOMObserver> observer);
@@ -95,6 +98,9 @@ public:
   void ResetPeakStats();
 
   void DumpState(std::vector<StreamContext*> stream_contexts);
+
+  void AllocMappingsAndUpdateFlags(MemBlock *block, 
+    bip::scoped_lock<bip::interprocess_mutex> &lock);
 };
 
 } // namespace mpool

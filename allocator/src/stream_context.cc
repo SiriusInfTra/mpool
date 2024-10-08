@@ -246,6 +246,7 @@ MemBlock *StreamFreeList::PushBlock(ProcessLocalData &local, MemBlock *block) {
     // LOG(INFO)  << "is small " << block->is_small << "free_list " <<
     // free_list.size();
     DLOG(INFO) << "PushBlock Merge " << *prev_block << " " << *block;
+    DLOG(INFO) << "PushBlock Merge " << *prev_block << " " << *block;
     free_list.erase(prev_block->iter_free_block_list);
     block = stream_block_list_ptr->MergeMemEntry(local, prev_block, block);
   } else {
@@ -259,6 +260,7 @@ MemBlock *StreamFreeList::PushBlock(ProcessLocalData &local, MemBlock *block) {
     // LOG(INFO)  << "is small " << block->is_small << "free_list " <<
     // free_list.size();
     DLOG(INFO) << "PushBlock Merge " << *block << " " << *next_block;
+    DLOG(INFO) << "PushBlock Merge " << *block << " " << *next_block;
     free_list.erase(next_block->iter_free_block_list);
     block = stream_block_list_ptr->MergeMemEntry(local, block, next_block);
   } else {
@@ -269,6 +271,7 @@ MemBlock *StreamFreeList::PushBlock(ProcessLocalData &local, MemBlock *block) {
       std::make_pair(block->nbytes, shm_ptr{block, local.shared_memory_}));
   // LOG(INFO)  << "is small " << block->is_small << "free_list " <<
   // free_list.size();
+  DLOG(INFO) << "PushBlock Return: " << *block;
   DLOG(INFO) << "PushBlock Return: " << *block;
   return block;
 }
@@ -287,10 +290,21 @@ MemBlock *StreamFreeList::MaybeMergeAdj(ProcessLocalData &local,
     prev_block = nullptr;
   }
   // guarantee prev_block is shouldn't be merge when pushed freelist
+  // make sure prev_block is adjacent to entry
+  if (prev_block != nullptr && prev_block->addr_offset + static_cast<ptrdiff_t>(prev_block->nbytes) != entry->addr_offset) {
+    prev_block = nullptr;
+  }
+  // guarantee prev_block is shouldn't be merge when pushed freelist
   DCHECK(prev_block == nullptr || !prev_block->is_free ||
          !prev_block->is_small || prev_block->unalloc_pages > 0)
       << "Curr: " << entry << "Prev: "  << prev_block << "Stream: " << current_stream_;
+      << "Curr: " << entry << "Prev: "  << prev_block << "Stream: " << current_stream_;
   auto *next_block = stream_block_list_ptr->GetNextEntry(local, entry);
+  // make sure next_block is adjacent to entry
+  if (next_block != nullptr && entry->addr_offset + static_cast<ptrdiff_t>(entry->nbytes) != next_block->addr_offset) {
+    next_block = nullptr;
+  }
+  // guarantee next_block is shouldn't be merge when pushed freelist
   // make sure next_block is adjacent to entry
   if (next_block != nullptr && entry->addr_offset + static_cast<ptrdiff_t>(entry->nbytes) != next_block->addr_offset) {
     next_block = nullptr;

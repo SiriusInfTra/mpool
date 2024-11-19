@@ -31,6 +31,7 @@
 
 #include <cuda.h>
 #include <cuda_runtime_api.h>
+#include <type_traits>
 
 namespace mpool {
 static py::object THPStorage_newSharedCuda(py::object _unused, py::args args) {
@@ -65,9 +66,7 @@ static py::object THPStorage_newSharedCuda(py::object _unused, py::args args) {
       .event_count = 0
   };
   auto storage_impl = GetTorchAllocator()->ReceiveHandle(device, handle, storage_size, extra_data);
-  py::object storage = py::module_::import("torch").attr("UntypedStorage")(0);
-  reinterpret_cast<THPStorage *>(storage.ptr())->cdata = storage_impl.release();
-  return storage;
+  return py::reinterpret_steal<py::object>(THPStorage_Wrap(c10::Storage(storage_impl)));
   END_HANDLE_TH_ERRORS_PYBIND
 }
 
@@ -76,14 +75,14 @@ static py::tuple THPStorage_shareCuda(py::object *_self, py::args noargs) {
   TORCH_WARN("THPStorage_shareCuda");
   PyObject *py_object = _self->ptr();
   auto *self = reinterpret_cast<THPStorage *>(py_object);
-  c10::StorageImpl *storage = self->cdata;
+  auto &&storage = self->cdata;
 
   auto *allocator = dynamic_cast<TorchAllocator *>(storage->allocator());
   TORCH_CHECK_NOTNULL(allocator);
   TORCH_CHECK_NOTNULL(storage->data());
 
   at::DeviceGuard device_guard(storage->device());
-  auto _handle = allocator->SendHandle(storage);
+  auto _handle = allocator->SendHandle(storage->unsafeGetStorageImpl());
 
   cudaEvent_t event;
   cudaIpcEventHandle_t event_handle;

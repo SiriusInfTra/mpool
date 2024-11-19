@@ -64,7 +64,7 @@ public:
 static std::shared_ptr<TorchAllocator> torch_allocator_ = nullptr;
 
 TorchAllocator *GetTorchAllocator() {
-  THPUtils_assert(torch_allocator_ != nullptr,
+  TORCH_CHECK(torch_allocator_ != nullptr,
                   "TorchAllocator not initialized.");
   return torch_allocator_.get();
 }
@@ -123,7 +123,7 @@ void BlockDeletePtr(void *_extra_data) {
   }
 }
 
-c10::DataPtr TorchAllocator::allocate(size_t nbytes) const {
+c10::DataPtr TorchAllocator::allocate(size_t nbytes) {
   Recorder recorder("allocate");
   auto cur_device = at::cuda::current_device();
   cudaStream_t stream = c10::cuda::getCurrentCUDAStream(cur_device);
@@ -145,6 +145,12 @@ c10::DataPtr TorchAllocator::allocate(size_t nbytes) const {
 }
 
 c10::DeleterFnPtr TorchAllocator::raw_deleter() const { return &RawDeletePtr; }
+
+void TorchAllocator::copy_data(void *dest, const void *src, std::size_t count) const {
+  /* ACC */ CUDA_CALL(cudaMemcpy(dest, src, count, cudaMemcpyKind::cudaMemcpyDeviceToDevice));
+}
+
+
 
 void *TorchAllocator::raw_alloc(size_t nbytes) {
   int device;
@@ -193,7 +199,7 @@ void TorchAllocator::emptyCache() {
   }
 }
 
-void TorchAllocator::setMemoryFraction(double fraction, int device) {
+void TorchAllocator::setMemoryFraction(double fraction, c10::DeviceIndex device) {
   TORCH_CHECK_NOT_IMPLEMENTED(false, "setMemoryFraction");
   throw std::runtime_error("NOT IMPL");
 }
@@ -203,7 +209,12 @@ void *TorchAllocator::getBaseAllocation(void *ptr, size_t *size) {
   throw std::runtime_error("NOT IMPL");
 }
 
-void TorchAllocator::cacheInfo(int dev_id, size_t *largestBlock) {
+void TorchAllocator::enablePeerAccess(c10::DeviceIndex dev, c10::DeviceIndex dev_to_access) {
+  TORCH_CHECK_NOT_IMPLEMENTED(false, "enablePeerAccess");
+  throw std::runtime_error("NOT IMPL");
+}
+
+void TorchAllocator::cacheInfo(c10::DeviceIndex dev_id, size_t *largestBlock) {
   TORCH_CHECK_NOT_IMPLEMENTED(false, "cacheInfo");
   throw std::runtime_error("NOT IMPL");
 }
@@ -220,6 +231,7 @@ void TorchAllocator::recordStream(const c10::DataPtr &data_ptr,
   extra_data->stream_set.push_back(stream);
   extra_data->event_count++;
 }
+
 
 void TorchAllocator::ProcessEvent() {
   for (auto it = _stream_events.begin(); it != _stream_events.end();) {
@@ -242,7 +254,7 @@ void TorchAllocator::ProcessEvent() {
 }
 
 c10::cuda::CUDACachingAllocator::DeviceStats
-TorchAllocator::getDeviceStats(int device) {
+TorchAllocator::getDeviceStats(c10::DeviceIndex device) {
   c10::cuda::CUDACachingAllocator::DeviceStats stats;
   auto &allocator = caching_allocators_.at(device);
   auto &caching_allocator_stats = allocator->GetStats();
@@ -257,11 +269,11 @@ TorchAllocator::getDeviceStats(int device) {
   return stats;
 }
 
-void TorchAllocator::resetAccumulatedStats(int device) {
+void TorchAllocator::resetAccumulatedStats(c10::DeviceIndex device) {
   TORCH_WARN_ONCE("resetAccumulatedStats has no effects.");
 }
 
-void TorchAllocator::resetPeakStats(int device) {
+void TorchAllocator::resetPeakStats(c10::DeviceIndex device) {
   auto &allocator = caching_allocators_.at(device);
   allocator->ResetPeakStats();
 }
@@ -274,13 +286,13 @@ c10::cuda::CUDACachingAllocator::SnapshotInfo TorchAllocator::snapshot() {
       auto *mem_block = *iter;
       snapshot_info.segments.push_back(
           c10::cuda::CUDACachingAllocator::SegmentInfo{
-              .device = mem_block->device_id,
-              .address = reinterpret_cast<int64_t>(
+              .device = static_cast<c10::DeviceIndex>(mem_block->device_id),
+              .address = reinterpret_cast<uintptr_t>(
                   caching_allocator->GetBasePtr() + mem_block->addr_offset),
-              .total_size = static_cast<int64_t>(mem_block->nbytes),
-              .requested_size = static_cast<int64_t>(mem_block->nbytes),
-              .allocated_size = static_cast<int64_t>(mem_block->nbytes),
-              .active_size = static_cast<int64_t>(mem_block->nbytes),
+              .total_size = static_cast<size_t>(mem_block->nbytes),
+              .requested_size = static_cast<size_t>(mem_block->nbytes),
+              .allocated_size = static_cast<size_t>(mem_block->nbytes),
+              .active_size = static_cast<size_t>(mem_block->nbytes),
               .stream = mem_block->stream,
               .is_large = !mem_block->is_small,
           });
@@ -289,40 +301,22 @@ c10::cuda::CUDACachingAllocator::SnapshotInfo TorchAllocator::snapshot() {
   throw std::runtime_error("NOT IMPL");
 }
 
-void TorchAllocator::notifyCaptureBegin(int device,
-                                        c10::cuda::CaptureId_t graph_id,
-                                        c10::cuda::MempoolId_t mempool_id) {
-  TORCH_CHECK_NOT_IMPLEMENTED(false, "notifyCaptureBegin");
-  throw std::runtime_error("NOT IMPL");
-}
-
-void TorchAllocator::notifyCaptureAboutToEnd(int device,
-                                             c10::cuda::CaptureId_t graph_id) {
-  TORCH_CHECK_NOT_IMPLEMENTED(false, "notifyCaptureAboutToEnd");
-  throw std::runtime_error("NOT IMPL");
-}
-
-void TorchAllocator::notifyCaptureEnded(int device,
-                                        c10::cuda::CaptureId_t graph_id) {
-  TORCH_CHECK_NOT_IMPLEMENTED(false, "notifyCaptureEnded");
-  throw std::runtime_error("NOT IMPL");
-}
-
-void TorchAllocator::notifyCaptureDestroy(int device,
-                                          c10::cuda::MempoolId_t mempool_id) {
-  TORCH_CHECK_NOT_IMPLEMENTED(false, "notifyCaptureDestroy");
-  throw std::runtime_error("NOT IMPL");
-}
-
 std::shared_ptr<void> TorchAllocator::getIpcDevPtr(std::string handle) {
   TORCH_CHECK_NOT_IMPLEMENTED(false, "getIpcDevPtr");
   throw std::runtime_error("NOT IMPL");
 }
 
+c10::cuda::CUDACachingAllocator::ShareableHandle TorchAllocator::shareIpcHandle(
+    void *ptr) {
+  TORCH_CHECK_NOT_IMPLEMENTED(false, "shareIpcHandle");
+  throw std::runtime_error("NOT IMPL");
+}
+
 void TorchAllocator::recordHistory(
-    bool enabled,
-    c10::cuda::CUDACachingAllocator::CreateContextFn context_recorder,
-    size_t alloc_trace_max_entries, bool alloc_trace_record_context) {
+      bool enabled,
+      c10::cuda::CUDACachingAllocator::CreateContextFn context_recorder,
+      size_t alloc_trace_max_entries,
+      c10::cuda::CUDACachingAllocator::RecordContext when) {
   TORCH_CHECK_NOT_IMPLEMENTED(false, "recordHistory");
   throw std::runtime_error("NOT IMPL");
 }
@@ -333,7 +327,23 @@ void TorchAllocator::attachOutOfMemoryObserver(
   throw std::runtime_error("NOT IMPL");
 }
 
-bool TorchAllocator::needsPoolSpecificPeerAccess() { return false; }
+void TorchAllocator::attachAllocatorTraceTracker(
+    c10::cuda::CUDACachingAllocator::AllocatorTraceTracker tracker) {
+  TORCH_CHECK_NOT_IMPLEMENTED(false, "attachAllocatorTraceTracker");
+  throw std::runtime_error("NOT IMPL");
+}
+
+cudaError_t TorchAllocator::memcpyAsync(void *dst, int dstDevice, const void *src,
+                                 int srcDevice, size_t count, cudaStream_t stream,
+                                 bool p2p_enabled) {
+  if (p2p_enabled || srcDevice == dstDevice) {
+    return cudaMemcpyAsync(dst, src, count, cudaMemcpyDeviceToDevice, stream);
+  }
+  return cudaMemcpyPeerAsync(dst, dstDevice, src, srcDevice, count, stream);
+}
+
+
+
 
 std::string TorchAllocator::name() { return "TorchAllocator"; }
 

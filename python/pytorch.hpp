@@ -1,8 +1,5 @@
 #pragma once
-
 #include <Python.h>
-
-
 #include <cstring>
 
 #include <pybind11/cast.h>
@@ -31,7 +28,6 @@
 
 #include <cuda.h>
 #include <cuda_runtime_api.h>
-#include <type_traits>
 
 namespace mpool {
 static py::object THPStorage_newSharedCuda(py::object _unused, py::args args) {

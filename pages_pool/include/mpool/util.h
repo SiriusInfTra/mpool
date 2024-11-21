@@ -4,7 +4,6 @@
 #include <iomanip>
 #include <limits>
 #include <string>
-#include <glog/logging.h>
 
 #define CUDA_CALL(func) do { \
   auto error = func; \

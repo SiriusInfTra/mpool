@@ -1,8 +1,9 @@
 #pragma once
 
-#include "mpool/stream_context.h"
-#include <boost/interprocess/sync/scoped_lock.hpp>
+#include <mpool/stream_context.h>
 #include <mpool/vmm_allocator.h>
+
+#include <boost/interprocess/sync/scoped_lock.hpp>
 
 namespace mpool {
 class CachingAllocator : public VMMAllocator {

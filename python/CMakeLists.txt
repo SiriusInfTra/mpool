@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.15)
 project(py_mpool)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_C_STANDARD 11)
 
 find_package(Torch REQUIRED)
 find_package(PythonLibs 3 REQUIRED)
@@ -10,13 +12,6 @@ set(C_MODULE_SOURCES bind.cc)
 set(C_MODULE_LIBRARIES pybind11::headers pages_pool allocator)
 set(C_MODULE_HEADERS .)
 set(C_MODULE_DEFINITION)
-
-  # FIX ME: torch allocator is not compatible with new version of pytorch
-if (ENABLE_TORCH AND (Torch_VERSION VERSION_GREATER_EQUAL "2.1"))
-  # set(ENABLE_TORCH OFF)
-  message(WARNING 
-      "mpool PyTorch allocator is not compatible with PyTorch version ${Torch_VERSION}.")
-endif()
 
 if (ENABLE_TORCH)
   message("PyTorch build is enabled.")
@@ -51,8 +46,16 @@ target_link_libraries(_C PRIVATE ${C_MODULE_LIBRARIES})
 target_compile_definitions(_C PRIVATE VERSION_INFO=${CMAKE_PROJECT_VERSION})
 target_compile_definitions(_C PRIVATE VERSION_MAJOR=${CMAKE_PROJECT_VERSION_MAJOR})
 target_compile_definitions(_C PRIVATE VERSION_MINOR=${CMAKE_PROJECT_VERSION_MINOR})
+# target_compile_definitions(_C PRIVATE _GLIBCXX_USE_CXX11_ABI=1)
 target_compile_definitions(_C PRIVATE ${C_MODULE_DEFINITION})
 target_include_directories(_C PRIVATE ${C_MODULE_HEADERS})
+get_directory_property(compile_defs COMPILE_DEFINITIONS)
+message("COMPILE_DEFINITIONS: ${compile_defs}")
+
+# 对于特定目标
+get_target_property(target_defs _C COMPILE_DEFINITIONS)
+message("Target compile definitions: ${target_defs}")
+
 
 set_target_properties(_C PROPERTIES INSTALL_RPATH "$ORIGIN")
 install(TARGETS _C DESTINATION mpool)

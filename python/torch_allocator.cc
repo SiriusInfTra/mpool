@@ -1,14 +1,17 @@
 #include <Python.h>
-#include <c10/core/Device.h>
-#include <c10/core/DeviceGuard.h>
-#include <c10/core/DeviceType.h>
-#include <c10/cuda/CUDAException.h>
 
 #include <mpool/caching_allocator.h>
 #include <mpool/mem_block.h>
 #include <mpool/shm.h>
 #include <torch_allocator.h>
 #include <py_wrap.hpp>
+
+#include <c10/core/Device.h>
+#include <c10/core/DeviceGuard.h>
+#include <c10/core/DeviceType.h>
+#include <c10/cuda/CUDAException.h>
+
+
 
 #include <cstddef>
 #include <c10/core/Storage.h>
@@ -21,7 +24,6 @@
 #include <torch/csrc/utils.h>
 #include <utility>
 
-#include <glog/logging.h>
 namespace mpool {
 
 c10::cuda::CUDACachingAllocator::Stat &
@@ -110,10 +112,10 @@ void BlockDeletePtr(void *_extra_data) {
         static_cast<c10::DeviceIndex>(extra_data->mem_block->device_id)}};
     cudaEvent_t event;
     // TODO EventPool
-    /* ACC */ CUDA_CALL(
+    /* ACC */ C10_CUDA_CHECK(
         cudaEventCreateWithFlags(&event, cudaEventDisableTiming));
     for (auto &&stream : streams) {
-      /* ACC */ CUDA_CALL(cudaEventRecord(event, stream.stream()));
+      /* ACC */ C10_CUDA_CHECK(cudaEventRecord(event, stream.stream()));
       extra_data->event_count++;
       torch_allocator_->_stream_events.insert(
           {stream.stream(), {extra_data, event}});
@@ -147,14 +149,14 @@ c10::DataPtr TorchAllocator::allocate(size_t nbytes) {
 c10::DeleterFnPtr TorchAllocator::raw_deleter() const { return &RawDeletePtr; }
 
 void TorchAllocator::copy_data(void *dest, const void *src, std::size_t count) const {
-  /* ACC */ CUDA_CALL(cudaMemcpy(dest, src, count, cudaMemcpyKind::cudaMemcpyDeviceToDevice));
+  /* ACC */ C10_CUDA_CHECK(cudaMemcpy(dest, src, count, cudaMemcpyKind::cudaMemcpyDeviceToDevice));
 }
 
 
 
 void *TorchAllocator::raw_alloc(size_t nbytes) {
   int device;
-  /* ACC */ CUDA_CALL(cudaGetDevice(&device));
+  /* ACC */ C10_CUDA_CHECK(cudaGetDevice(&device));
   cudaStream_t stream = c10::cuda::getCurrentCUDAStream(device);
   return raw_alloc_with_stream(nbytes, stream);
 }
@@ -162,7 +164,7 @@ void *TorchAllocator::raw_alloc(size_t nbytes) {
 void *TorchAllocator::raw_alloc_with_stream(size_t nbytes,
                                             cudaStream_t stream) {
   int device;
-  /* ACC */ CUDA_CALL(cudaGetDevice(&device));
+  /* ACC */ C10_CUDA_CHECK(cudaGetDevice(&device));
   auto &caching_allocator = caching_allocators_[device];
   auto *block = caching_allocator->Alloc(nbytes, 512, stream, CachingAllocator::ALLOC_TRY_EXPAND_VA);
   auto *addr = caching_allocator->GetBasePtr() + block->addr_offset;
@@ -214,6 +216,38 @@ void TorchAllocator::enablePeerAccess(c10::DeviceIndex dev, c10::DeviceIndex dev
   throw std::runtime_error("NOT IMPL");
 }
 
+void TorchAllocator::beginAllocateToPool(c10::DeviceIndex device,
+                                   c10::cuda::MempoolId_t mempool_id,
+                                   std::function<bool(cudaStream_t)> filter) {
+  TORCH_CHECK_NOT_IMPLEMENTED(false, "beginAllocateToPool");
+  throw std::runtime_error("NOT IMPL");
+}
+
+void TorchAllocator::endAllocateToPool(c10::DeviceIndex device,
+                                       c10::cuda::MempoolId_t id) {
+  TORCH_CHECK_NOT_IMPLEMENTED(false, "endAllocateToPool");
+  throw std::runtime_error("NOT IMPL");
+}
+
+void TorchAllocator::releasePool(c10::DeviceIndex device,
+                                 c10::cuda::MempoolId_t id) {
+  TORCH_CHECK_NOT_IMPLEMENTED(false, "releasePool");
+  throw std::runtime_error("NOT IMPL");
+}
+
+c10::cuda::CUDACachingAllocator::CheckpointDelta TorchAllocator::setCheckpointPoolState(c10::DeviceIndex device,
+                                       std::shared_ptr<c10::cuda::CUDACachingAllocator::AllocatorState> pps) {
+  TORCH_CHECK_NOT_IMPLEMENTED(false, "setCheckpointPoolState");
+  throw std::runtime_error("NOT IMPL");
+}
+
+std::shared_ptr<c10::cuda::CUDACachingAllocator::AllocatorState>
+ TorchAllocator::getCheckpointState(c10::DeviceIndex device,
+                                        c10::cuda::MempoolId_t id) {
+  TORCH_CHECK_NOT_IMPLEMENTED(false, "getCheckpointState");
+  throw std::runtime_error("NOT IMPL");
+}
+
 void TorchAllocator::cacheInfo(c10::DeviceIndex dev_id, size_t *largestBlock) {
   TORCH_CHECK_NOT_IMPLEMENTED(false, "cacheInfo");
   throw std::runtime_error("NOT IMPL");
@@ -241,9 +275,9 @@ void TorchAllocator::ProcessEvent() {
       cudaGetLastError();
       it++;
     } else if (err != cudaSuccess) {
-      /* ACC */ CUDA_CALL(err);
+      /* ACC */ C10_CUDA_CHECK(err);
     } else {
-      /* ACC */ CUDA_CALL(cudaEventDestroy(event));
+      /* ACC */ C10_CUDA_CHECK(cudaEventDestroy(event));
       extra_data->event_count--;
       if (extra_data->event_count == 0) {
         torch_allocator_->Dealloc(extra_data);
@@ -354,7 +388,7 @@ TorchAllocator::ReceiveHandle(int device_id, shm_ptr<MemBlock> handle,
   auto &caching_allocator = caching_allocators_[device_id];
   auto *mem_block = caching_allocator->ReceiveMemBlock(handle);
   extra_data->mem_block = mem_block;
-  CHECK_LE(storage_size, mem_block->nbytes);
+  TORCH_CHECK_LE(storage_size, mem_block->nbytes);
 
   auto cur_device = at::cuda::current_device();
   auto *addr = caching_allocator->GetBasePtr() + mem_block->addr_offset;
@@ -374,4 +408,17 @@ shm_ptr<MemBlock> TorchAllocator::SendHandle(c10::StorageImpl *storage) {
   return caching_allocator->SendMemBlock(mem_block);
 }
 
+void TorchAllocator::Dealloc(MemBlockExtraData *extra_data) {
+  if (extra_data->require_device_sync) {
+    at::cuda::stream_synchronize(c10::cuda::getCurrentCUDAStream(0));
+  }
+  if (extra_data->require_event_sync) {
+    /* ACC */ C10_CUDA_CHECK(cudaEventDestroy(extra_data->event));
+    DecerEventUsage();
+  }
+  auto &caching_allocator =
+      caching_allocators_.at(extra_data->mem_block->device_id);
+  caching_allocator->Free(extra_data->mem_block);
+  delete extra_data;
+}
 } // namespace mpool

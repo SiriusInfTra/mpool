@@ -3,7 +3,6 @@ project(mpool VERSION 1.0.0 LANGUAGES CXX C CUDA)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_C_STANDARD 11)
 
-
 option(CUDA_TOOLKIT_VERSION "CUDA Toolkit Version" 11)
 
 option(ENABLE_PYTHON_BINDING "build python extension" ON)
@@ -28,7 +27,7 @@ find_package(CUDAToolkit ${CUDA_TOOLKIT_VERSION} REQUIRED)
 find_package(Threads REQUIRED)
 find_package(Boost REQUIRED)
 
-set(CMAKE_CXX_FLAGS "-Wall -Wextra -Wreturn-type -Wno-missing-field-initializers -Wno-class-memaccess -Wno-unused-parameter")
+set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror -Wreturn-type -Wno-missing-field-initializers -Wno-class-memaccess -Wno-unused-parameter")
 
 
 # include(FetchContent)

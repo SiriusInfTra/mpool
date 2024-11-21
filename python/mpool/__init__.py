@@ -34,7 +34,7 @@ def override_torch_allocator(name: str, nbytes_per_device: int):
         )
         caching_allocator = C_CachingAllocator(page_pool, caching_allocator_config)
         caching_allocator_list.append(caching_allocator)
-    _C._override_torch_allocator(caching_allocator_list)
+    # _C._override_torch_allocator(caching_allocator_list)
     def share_cuda(self):
         return _C._share_cuda(self)
     def new_shared_cuda(*args):

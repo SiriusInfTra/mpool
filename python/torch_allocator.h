@@ -158,19 +158,7 @@ public:
 
   void ProcessEvent();
 
-  void Dealloc(MemBlockExtraData *extra_data) {
-    if (extra_data->require_device_sync) {
-      at::cuda::stream_synchronize(c10::cuda::getCurrentCUDAStream(0));
-    }
-    if (extra_data->require_event_sync) {
-      /* ACC */ CUDA_CALL(cudaEventDestroy(extra_data->event));
-      DecerEventUsage();
-    }
-    auto &caching_allocator =
-        caching_allocators_.at(extra_data->mem_block->device_id);
-    caching_allocator->Free(extra_data->mem_block);
-    delete extra_data;
-  }
+  void Dealloc(MemBlockExtraData *extra_data);
 };
 
 void OverridePyTorchAllocator(

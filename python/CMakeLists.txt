@@ -40,13 +40,13 @@ if (ENABLE_TENSORRT)
   list(APPEND C_MODULE_DEFINITION ENABLE_TENSORRT)
 endif()
 
+
 pybind11_add_module(_C MODULE ${C_MODULE_SOURCES})
 target_link_libraries(_C PRIVATE ${C_MODULE_LIBRARIES})
 
 target_compile_definitions(_C PRIVATE VERSION_INFO=${CMAKE_PROJECT_VERSION})
 target_compile_definitions(_C PRIVATE VERSION_MAJOR=${CMAKE_PROJECT_VERSION_MAJOR})
 target_compile_definitions(_C PRIVATE VERSION_MINOR=${CMAKE_PROJECT_VERSION_MINOR})
-# target_compile_definitions(_C PRIVATE _GLIBCXX_USE_CXX11_ABI=1)
 target_compile_definitions(_C PRIVATE ${C_MODULE_DEFINITION})
 target_include_directories(_C PRIVATE ${C_MODULE_HEADERS})
 get_directory_property(compile_defs COMPILE_DEFINITIONS)

@@ -15,5 +15,4 @@
 #include <glog/logging.h>
 
 namespace mpool {
-
 }

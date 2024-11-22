@@ -26,18 +26,18 @@
 
 namespace mpool {
 
-c10::cuda::CUDACachingAllocator::Stat &
-GetStat(c10::cuda::CUDACachingAllocator::StatArray &arr, bool is_small) {
+c10::CachingDeviceAllocator::Stat &
+GetStat(c10::CachingDeviceAllocator::StatArray &arr, bool is_small) {
   if (is_small) {
     return arr.at(static_cast<size_t>(
-        c10::cuda::CUDACachingAllocator::StatType::SMALL_POOL));
+        c10::CachingDeviceAllocator::StatType::SMALL_POOL));
   } else {
     return arr.at(static_cast<size_t>(
-        c10::cuda::CUDACachingAllocator::StatType::LARGE_POOL));
+        c10::CachingDeviceAllocator::StatType::LARGE_POOL));
   }
 }
 
-void SetStat(c10::cuda::CUDACachingAllocator::Stat &stat,
+void SetStat(c10::CachingDeviceAllocator::Stat &stat,
              const Stat &caching_allocator_stat) {
   stat.current = caching_allocator_stat.current;
   stat.peak = caching_allocator_stat.peak;

@@ -300,6 +300,14 @@ TorchAllocator::getDeviceStats(c10::DeviceIndex device) {
     auto &stat = GetStat(stats.active, is_small);
     SetStat(stat, caching_allocator_stats.mem_block_count[is_small]);
   }
+  for (bool is_small : {false, true}) {
+    auto &stat = GetStat(stats.reserved_bytes, is_small);
+    SetStat(stat, caching_allocator_stats.mem_block_count[is_small]);
+    stat.allocated *= allocator->page_pool.config.page_nbytes;
+    stat.freed *= allocator->page_pool.config.page_nbytes;
+    stat.current *= allocator->page_pool.config.page_nbytes;
+    stat.peak *= allocator->page_pool.config.page_nbytes;
+  }
   return stats;
 }
 

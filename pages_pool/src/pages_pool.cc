@@ -13,7 +13,7 @@
 #include <boost/interprocess/interprocess_fwd.hpp>
 #include <boost/container/map.hpp>
 
-#include <glog/logging.h>
+#include <mpool/logging_is_spdlog.h>
 
 
 namespace mpool {

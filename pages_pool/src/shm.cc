@@ -1,6 +1,6 @@
 #include <mpool/shm.h>
 
-#include <glog/logging.h>
+#include <mpool/logging_is_spdlog.h>
 
 namespace mpool {
 

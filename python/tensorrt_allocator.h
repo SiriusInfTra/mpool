@@ -12,7 +12,7 @@
 #include <mem_block.h>
 #include <py_wrap.hpp>
 
-#include <glog/logging.h>
+#include <mpool/logging_is_spdlog.h>
 
 namespace mpool {
 class TensorRTAllocator : public nvinfer1::IGpuAsyncAllocator {

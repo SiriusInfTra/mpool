@@ -12,7 +12,7 @@
 #include <boost/interprocess/managed_shared_memory.hpp>
 
 #include <cuda.h>
-#include <glog/logging.h>
+#include <mpool/logging_is_spdlog.h>
 
 namespace mpool {
 }

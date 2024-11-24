@@ -1,6 +1,6 @@
 #include <mpool/pages.h>
 #include <mpool/cuda_handle.h>
-#include <glog/logging.h>
+#include <mpool/logging_is_spdlog.h>
 
 namespace mpool {
 void CUDAIpcTransfer::BindServer(int &socket_fd) {

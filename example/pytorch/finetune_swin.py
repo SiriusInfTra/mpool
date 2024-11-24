@@ -34,7 +34,7 @@ class AverageMeter:
 def get_gpu_memory_usage():
     """获取当前GPU显存使用情况"""
     if torch.cuda.is_available():
-        return torch.cuda.memory_reserved() / 1024 / 1024  # MB
+        return torch.cuda.memory_allocated() / 1024 / 1024  # MB
     return 0
 
 def train_epoch(model, train_loader, criterion, optimizer, device, epoch, args):

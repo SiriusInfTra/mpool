@@ -12,7 +12,7 @@
 #include <unistd.h>
 #include <sys/wait.h>
 
-#include <glog/logging.h>
+#include <mpool/logging_is_spdlog.h>
 
 using namespace mpool;
 

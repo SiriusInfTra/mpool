@@ -1,7 +1,7 @@
 #include <mpool/util.h>
 #include <cuda.h>
 #include <cuda_runtime_api.h>
-#include <glog/logging.h>
+#include <mpool/logging_is_spdlog.h>
 
 #define CUDA_CALL(func) do { \
     auto error = func; \

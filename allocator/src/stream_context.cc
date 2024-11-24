@@ -6,7 +6,7 @@
 #include <mpool/mem_block.h>
 #include <mpool/stream_context.h>
 
-#include <glog/logging.h>
+#include <mpool/logging_is_spdlog.h>
 
 namespace mpool {
 

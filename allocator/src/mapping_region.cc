@@ -7,7 +7,7 @@
 #include <boost/interprocess/containers/vector.hpp>
 #include <cuda.h>
 #include <functional>
-#include <glog/logging.h>
+#include <mpool/logging_is_spdlog.h>
 #include <limits>
 
 namespace mpool {
@@ -186,7 +186,7 @@ std::vector<index_t> DynamicMappingRegion::AllocMappings(MemBlock *block) {
         missing_va_mapping_i.push_back(index);
       }
     }
-    CHECK_EQ(block->unalloc_pages, missing_va_mapping_i.size())
+    CHECK_EQ(block->unalloc_pages, static_cast<int32_t>(missing_va_mapping_i.size()))
         << "Mismatch unalloc pages: " << block << ".";
   }
 

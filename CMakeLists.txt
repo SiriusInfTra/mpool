@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.15)
 project(mpool VERSION 1.0.0 LANGUAGES CXX C CUDA)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_C_STANDARD 11)
-
+add_compile_definitions(_GLIBCXX_USE_CXX11_ABI=0)
 option(CUDA_TOOLKIT_VERSION "CUDA Toolkit Version" 11)
 
 option(ENABLE_PYTHON_BINDING "build python extension" ON)
@@ -32,7 +32,8 @@ set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror -Wreturn-type -Wno-missing-field-init
 
 # include(FetchContent)
 # set(FETCHCONTENT_QUIET OFF)
-
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+add_subdirectory(third_party/spdlog)
 add_subdirectory(pages_pool)
 add_subdirectory(allocator)
 if(ENABLE_PYTHON_BINDING)

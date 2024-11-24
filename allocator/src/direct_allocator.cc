@@ -2,7 +2,7 @@
 #include <mpool/util.h>
 #include <mpool/direct_allocator.h>
 
-#include <glog/logging.h>
+#include <mpool/logging_is_spdlog.h>
 
 namespace mpool {
 DirectAllocator::DirectAllocator(SharedMemory &shared_memory,

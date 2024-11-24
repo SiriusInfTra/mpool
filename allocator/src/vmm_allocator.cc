@@ -14,7 +14,7 @@
 
 #include <boost/unordered_map.hpp>
 
-#include <glog/logging.h>
+#include <mpool/logging_is_spdlog.h>
 
 namespace mpool {
 VMMAllocator::VMMAllocator(SharedMemory &shared_memory, PagesPool &page_pool,

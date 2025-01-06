@@ -168,7 +168,7 @@ void DirectAllocator::Map(MemBlock* block) {
   }
   if (new_page_index.empty()) {
     LOG(WARNING) << config.log_prefix
-                 << "OOM: Cannot find any physical page, "
+                 << "[Map] OOM: Cannot find any physical page, "
                  << "block: " << block;
     ReportOOM(0, OOMReason::NO_PHYSICAL_PAGES, true);
   }

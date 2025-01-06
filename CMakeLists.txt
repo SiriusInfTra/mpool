@@ -28,7 +28,7 @@ find_package(CUDAToolkit ${CUDA_TOOLKIT_VERSION} REQUIRED)
 find_package(Threads REQUIRED)
 find_package(Boost REQUIRED)
 
-set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror -Wreturn-type -Wno-missing-field-initializers -Wno-class-memaccess -Wno-unused-parameter")
+set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror -Wreturn-type -Wno-missing-field-initializers -Wno-class-memaccess -Wno-unused-parameter -Wno-maybe-uninitialized")
 
 
 # include(FetchContent)

@@ -99,6 +99,9 @@ PagesPool::AllocDisPages(Belong blg, num_t num_req,
   blg.Get()->pages_num.fetch_add(ret.size(), std::memory_order_relaxed);
   belong_registery_.GetFreeBelong().Get()->pages_num.fetch_sub(
       ret.size(), std::memory_order_relaxed);
+  
+  // LOG(INFO) << "AllocDisPages: ret=" << ret
+  //           << " blg " << blg << " " << *phy_pages[ret[0]].belong;
   return ret;
 }
 
@@ -118,6 +121,9 @@ void PagesPool::FreePages(const std::vector<index_t> &pages, Belong blg,
   blg.Get()->pages_num.fetch_sub(pages.size(), std::memory_order_relaxed);
   belong_registery_.GetFreeBelong().Get()->pages_num.fetch_add(
       pages.size(), std::memory_order_relaxed);
+
+  // LOG(INFO) << "FreePages: pages=" << pages << ", blg=" << blg 
+  //           << " " << *phy_pages[pages[0]].belong;
 }
 
 PagesPool::~PagesPool() {

@@ -18,11 +18,18 @@ target_compile_definitions(pages_pool PUBLIC MPOOL_VERBOSE_LEVEL=${MPOOL_VERBOSE
 
 
 include(${PROJECT_SOURCE_DIR}/cmake/glog.cmake)
-target_link_libraries(pages_pool PUBLIC CUDA::cudart CUDA::cuda_driver Threads::Threads rt glog::glog)
-target_include_directories(pages_pool PUBLIC include)
+target_link_libraries(pages_pool PUBLIC 
+    CUDA::cudart 
+    CUDA::cuda_driver 
+    Threads::Threads 
+    glog::glog
+    rt 
+    ${Boost_LIBRARIES}
+)
+target_include_directories(pages_pool PUBLIC include ${Boost_INCLUDE_DIRS})
 
-add_executable(pages_pool_test ${PAGES_POOL_TEST})
-target_link_libraries(pages_pool_test PRIVATE pages_pool)
+# add_executable(pages_pool_test ${PAGES_POOL_TEST})
+# target_link_libraries(pages_pool_test PRIVATE pages_pool)
 
 add_executable(benchmark test/benchmark.cc)
 target_link_libraries(benchmark PRIVATE pages_pool)

@@ -123,6 +123,75 @@ void DirectAllocator::Free(const MemBlock *block, size_t flags) {
   }
 }
 
+void DirectAllocator::Unmap(MemBlock *block) {
+  bip::scoped_lock lock{shared_memory_.GetMutex()};
+  CHECK_EQ(block->nbytes, page_pool.config.page_nbytes);
+  CHECK_EQ((block->addr_offset & (page_pool.config.page_nbytes - 1)), 0);
+  CHECK_EQ(block->unalloc_pages, 0);
+
+  auto vpage_idx = mapping_region_.ByteOffsetToIndex(block->addr_offset);
+  auto & page_table = mapping_region_.GetMutableSelfPageTable();
+  CHECK(page_table.at(vpage_idx) != nullptr);
+  index_t page_begin = page_table.at(vpage_idx)->index;
+
+  {
+    auto page_pool_lk = page_pool.Lock();
+    page_pool.FreePages({page_begin}, belong, page_pool_lk);
+  }
+
+  auto addr = reinterpret_cast<CUdeviceptr>(
+      mapping_region_.GetBasePtr() + block->addr_offset);
+  CU_CALL(cuMemUnmap(addr, page_pool.config.page_nbytes));
+
+  block->unalloc_pages = 1;
+
+  page_table.at(vpage_idx) = nullptr;
+}
+
+void DirectAllocator::Map(MemBlock* block) {
+  // return nullptr;
+  bip::scoped_lock lock{shared_memory_.GetMutex()};
+  CHECK_EQ(block->nbytes, page_pool.config.page_nbytes);
+  CHECK_EQ((block->addr_offset & (page_pool.config.page_nbytes - 1)), 0);
+  CHECK_EQ(block->unalloc_pages, 1);
+
+  // index_t page_begin = mapping_region_.ByteOffsetToIndex(block->addr_offset);
+  auto & page_table = mapping_region_.GetMutableSelfPageTable();
+  auto addr = mapping_region_.GetBasePtr() + block->addr_offset;
+  auto vpage_idx = mapping_region_.ByteOffsetToIndex(block->addr_offset);
+  CHECK(page_table.at(vpage_idx) == nullptr);
+  
+  std::vector<index_t> new_page_index;
+  {
+    auto page_pool_lk = page_pool.Lock();
+    new_page_index = page_pool.AllocDisPages(belong, 1, page_pool_lk);
+  }
+  if (new_page_index.empty()) {
+    LOG(WARNING) << config.log_prefix
+                 << "OOM: Cannot find any physical page, "
+                 << "block: " << block;
+    ReportOOM(0, OOMReason::NO_PHYSICAL_PAGES, true);
+  }
+
+  auto & page = page_pool.PagesView()[new_page_index[0]];
+  CU_CALL(cuMemMap(
+      reinterpret_cast<CUdeviceptr>(addr),
+      page_pool.config.page_nbytes, 0, page.cu_handle, 0));
+
+  CUmemAccessDesc acc_desc = {
+    .location = {.type = CU_MEM_LOCATION_TYPE_DEVICE ,
+                 .id = page_pool.config.device_id},
+    .flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE,
+  };
+  CU_CALL(cuMemSetAccess(
+      reinterpret_cast<CUdeviceptr>(addr), 
+      page_pool.config.page_nbytes, &acc_desc, 1));
+
+  block->unalloc_pages = 0;
+
+  page_table.at(vpage_idx) = &page;
+}
+
 void DirectAllocator::ReportOOM(cudaStream_t cuda_stream, OOMReason reason,
                                 bool force_abort) {
   VMMAllocator::ReportOOM(cuda_stream, reason, force_abort);

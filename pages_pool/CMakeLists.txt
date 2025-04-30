@@ -23,6 +23,7 @@ target_link_libraries(pages_pool PUBLIC
     Threads::Threads 
     glog::glog
     rt 
+    spdlog::spdlog
     ${Boost_LIBRARIES}
 )
 target_include_directories(pages_pool PUBLIC include ${Boost_INCLUDE_DIRS})

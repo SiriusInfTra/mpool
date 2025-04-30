@@ -134,6 +134,10 @@ public:
   size_t GetVARangeNBytes() const {
     return mem_block_nbytes * self_page_table_.size();
   }
+
+  std::vector<const PhyPage *> & GetMutableSelfPageTable() { 
+    return self_page_table_; 
+  }
 };
 
 class DynamicMappingRegion : public IMappingRegion {

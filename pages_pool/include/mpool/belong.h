@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cstddef>
+#include <cstring>
 #include <iostream>
 #include <ostream>
 #include <string>

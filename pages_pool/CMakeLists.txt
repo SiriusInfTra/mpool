@@ -15,8 +15,17 @@ add_library(pages_pool SHARED ${PAGES_POOL_SRC})
 target_compile_definitions(pages_pool PUBLIC MPOOL_CHECK_LEVEL=${MPOOL_CHECK_LEVEL})
 target_compile_definitions(pages_pool PUBLIC MPOOL_VERBOSE_LEVEL=${MPOOL_VERBOSE_LEVEL})
 
-target_link_libraries(pages_pool PUBLIC CUDA::cudart CUDA::cuda_driver Threads::Threads rt spdlog::spdlog)
-target_include_directories(pages_pool PUBLIC include)
+
+include(${PROJECT_SOURCE_DIR}/cmake/glog.cmake)
+target_link_libraries(pages_pool PUBLIC 
+    CUDA::cudart 
+    CUDA::cuda_driver 
+    Threads::Threads 
+    glog::glog
+    rt 
+    ${Boost_LIBRARIES}
+)
+target_include_directories(pages_pool PUBLIC include ${Boost_INCLUDE_DIRS})
 
 # add_executable(pages_pool_test ${PAGES_POOL_TEST})
 # target_link_libraries(pages_pool_test PRIVATE pages_pool)

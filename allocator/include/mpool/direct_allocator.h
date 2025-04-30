@@ -35,6 +35,10 @@ public:
   }
   virtual void Free(const MemBlock *block, size_t flags) override;
 
+  // Map/UnMap only support page blocks
+  void Map(MemBlock *block);
+  void Unmap(MemBlock *block);
+
   size_t AlignToPages(size_t nbytes) {
     return nbytes >= page_pool.config.page_nbytes 
            ? AlignNbytes(nbytes, page_pool.config.page_nbytes) 

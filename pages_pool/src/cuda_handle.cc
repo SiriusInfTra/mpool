@@ -3,7 +3,7 @@
 #include <mpool/logging_is_spdlog.h>
 
 namespace mpool {
-void CUDAIpcTransfer::BindServer(int &socket_fd) {
+void PageHandleTransfer::BindServer(int &socket_fd) {
   LOG_IF(INFO, VERBOSE_LEVEL >= 2) << log_prefix_ << "BIND SERVER.";
   struct sockaddr_un server_addr;
 
@@ -25,12 +25,12 @@ void CUDAIpcTransfer::BindServer(int &socket_fd) {
       << log_prefix_ << "Bind error.";
 }
 
-void CUDAIpcTransfer::UnlinkServer(int socket_fd) {
+void PageHandleTransfer::UnlinkServer(int socket_fd) {
   unlink(("/dev/shm/" + server_sock_name_).c_str());
   close(socket_fd);
 }
 
-void CUDAIpcTransfer::BindClient(int &socket_fd) {
+void PageHandleTransfer::BindClient(int &socket_fd) {
   LOG_IF(INFO, VERBOSE_LEVEL >= 2) << log_prefix_ << "BIND CLIENT.";
   struct sockaddr_un client_addr;
   CHECK_GE(socket_fd = socket(AF_UNIX, SOCK_DGRAM, 0), 0)
@@ -49,12 +49,12 @@ void CUDAIpcTransfer::BindClient(int &socket_fd) {
       << log_prefix_ << "Bind fail.";
 }
 
-void CUDAIpcTransfer::UnlinkClient(int socket_fd) {
+void PageHandleTransfer::UnlinkClient(int socket_fd) {
   unlink(("/dev/shm" + client_sock_name_).c_str());
   close(socket_fd);
 }
 
-void CUDAIpcTransfer::Receive(int fd_list[], size_t len, int socket_fd) {
+void PageHandleTransfer::Receive(int fd_list[], size_t len, int socket_fd) {
   LOG_IF(INFO, VERBOSE_LEVEL >= 1) << log_prefix_ <<  "RECEIVE.";
   struct msghdr msg = {0};
   struct iovec iov[1];
@@ -86,7 +86,7 @@ void CUDAIpcTransfer::Receive(int fd_list[], size_t len, int socket_fd) {
   CHECK_EQ(cmptr->cmsg_type, SCM_RIGHTS) << log_prefix_ << "Bad cmsg received.";
 }
 
-void CUDAIpcTransfer::Send(int fd_list[], size_t len, int socket_fd) {
+void PageHandleTransfer::Send(int fd_list[], size_t len, int socket_fd) {
   LOG_IF(INFO, VERBOSE_LEVEL >= 2) << log_prefix_ << "SEND";
   struct msghdr msg;
   struct iovec iov[1];
@@ -122,7 +122,7 @@ void CUDAIpcTransfer::Send(int fd_list[], size_t len, int socket_fd) {
   CHECK_GE(send_result, 0) << log_prefix_ << "Send msg fail.";
 }
 
-CUDAIpcTransfer::CUDAIpcTransfer(SharedMemory &shared_memory,
+PageHandleTransfer::PageHandleTransfer(SharedMemory &shared_memory,
                                  std::vector<PhyPage> &phy_pages_ref,
                                  const PagesPoolConf &conf)
     : server_sock_name_(conf.shm_name + "__sock_ipc_server.sock"),
@@ -136,12 +136,12 @@ CUDAIpcTransfer::CUDAIpcTransfer(SharedMemory &shared_memory,
   phy_pages_ref_.reserve(pages_num_);
 }
 
-CUDAIpcTransfer::~CUDAIpcTransfer() {
+PageHandleTransfer::~PageHandleTransfer() {
   message_queue_.Close();
   export_handle_thread_.join();
 }
 
-void CUDAIpcTransfer::InitMaster(Belong kFree) {
+void PageHandleTransfer::InitMaster(Belong kFree) {
   message_queue_.RecordEvent(Event::kMasterChance);
   for (size_t k = 0; k < pages_num_; ++k) {
     shm_belong_list_[k] = kFree;
@@ -170,7 +170,7 @@ void CUDAIpcTransfer::InitMaster(Belong kFree) {
   LOG_IF(INFO, VERBOSE_LEVEL >= 1) << log_prefix_ << "[CUDAIpcTransfer] Init master ok!";
 }
 
-void CUDAIpcTransfer::InitMirror() {
+void PageHandleTransfer::InitMirror() {
   message_queue_.WaitEvent(Event::kServerReady);
   int socket_fd;
   BindClient(socket_fd);
@@ -204,7 +204,7 @@ void CUDAIpcTransfer::InitMirror() {
   LOG_IF(INFO, VERBOSE_LEVEL >= 1) << log_prefix_ << "[CUDAIpcTransfer] Init mirror ok!";
 }
 
-void CUDAIpcTransfer::Run() {
+void PageHandleTransfer::Run() {
   if (message_queue_.WaitEvent(Event::kMasterChance, true) ==
       false) {
     return;

@@ -30,13 +30,7 @@ std::ostream &operator<<(std::ostream &out, std::vector<index_t> vec) {
   return out;
 }
 
-PagesPool::PagesPool(SharedMemory &shared_memory, PagesPoolConf conf,
-                     bool first_init)
-    : config(std::move(conf)), page_num(config.pool_nbytes / config.page_nbytes),
-      shared_memory_(shared_memory),
-      free_list_(shared_memory_),
-      handle_transfer_(shared_memory_, phy_pages, config),
-      belong_registery_(shared_memory_) {
+void PagesPool::Initialize(bool first_init) {
   CU_CALL(cuInit(0));
   belong_registery_.Init(config.pool_nbytes / config.page_nbytes);
   if (first_init) {
@@ -49,6 +43,16 @@ PagesPool::PagesPool(SharedMemory &shared_memory, PagesPoolConf conf,
 
   free_list_.Init(config.pool_nbytes / config.page_nbytes);
   DLOG(INFO) << config.log_prefix << "Init PagesPool OK.";
+}
+
+PagesPool::PagesPool(SharedMemory &shared_memory, PagesPoolConf conf,
+                     bool first_init)
+    : config(std::move(conf)), page_num(config.pool_nbytes / config.page_nbytes),
+      shared_memory_(shared_memory),
+      free_list_(shared_memory_),
+      handle_transfer_(shared_memory_, phy_pages, config),
+      belong_registery_(shared_memory_) {
+  Initialize(first_init);
 }
 
 index_t PagesPool::AllocConPages(Belong blg, num_t num_req,

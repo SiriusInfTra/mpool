@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.15)
 project(py_mpool)
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARDC 17)
 set(CMAKE_C_STANDARD 11)
 
 find_package(Torch REQUIRED)

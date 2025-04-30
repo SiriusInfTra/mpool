@@ -30,8 +30,10 @@ private:
     std::vector<PhyPage>    phy_pages;
     
     FreeList                free_list_;
-    CUDAIpcTransfer          handle_transfer_;
+    PageHandleTransfer      handle_transfer_;
     BelongRegistry          belong_registery_;
+
+    void Initialize(bool first_init);
 public:
     static bool RemoveShm(const PagesPoolConf &config) {
         return bip::shared_memory_object::remove(config.shm_name.c_str());
@@ -41,6 +43,8 @@ public:
     ~PagesPool();
 
     BelongRegistry &GetBelongRegistry();
+
+    
 
     Belong GetBelong(const std::string &name) {
         return belong_registery_.GetOrCreateBelong(name);

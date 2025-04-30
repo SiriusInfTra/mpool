@@ -79,7 +79,7 @@ public:
 };
 
 // NOTE: concurrency construction or deconstruction is NOT allowed.
-class CUDAIpcTransfer {
+class PageHandleTransfer {
 private:
   // typically, there is a limit on the maximum number of transferred FD
   // include/net/scm.h SCM_MAX_FD 253
@@ -100,11 +100,11 @@ private:
   const std::string log_prefix_;
 
 public:
-  CUDAIpcTransfer(SharedMemory &shared_memory,
+  PageHandleTransfer(SharedMemory &shared_memory,
                   std::vector<PhyPage> &phy_pages_ref,
                   const PagesPoolConf &conf);
 
-  ~CUDAIpcTransfer();
+  ~PageHandleTransfer();
 
   void InitMaster(Belong kFree);
 

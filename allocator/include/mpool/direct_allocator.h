@@ -23,6 +23,11 @@ private:
     return global_stream_context_;
   }
 
+  MemBlock *
+  AllocWithLock(size_t request_nbytes, cudaStream_t cuda_stream,
+                bool try_expand_VA,
+                const bip::scoped_lock<bip::interprocess_mutex> &lock);
+
 public:
   DirectAllocator(SharedMemory &shared_memory, PagesPool &page_pool,
                   VMMAllocatorConfig config, bool first_init);

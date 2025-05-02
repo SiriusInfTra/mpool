@@ -171,8 +171,12 @@ MemBlock *CachingAllocator::Alloc(size_t nbytes, size_t alignment,
   size_t nbytes_with_alignment = AlignNbytes(nbytes, alignment);
   bip::scoped_lock lock{shared_memory_.GetMutex()};
   CHECK_GT(nbytes_with_alignment, 0ULL);
-  return AllocWithLock(nbytes_with_alignment, cuda_stream,
+  auto *mem_block = AllocWithLock(nbytes_with_alignment, cuda_stream,
                        flags & VMMAllocator::ALLOC_TRY_EXPAND_VA, lock);
+  if ((flags & VMMAllocator::SKIP_ZERO_FILLING) == 0) {
+    SetZero(mem_block, cuda_stream);
+  }
+  return mem_block;
 }
 
 MemBlock *CachingAllocator::Realloc(MemBlock *block, size_t nbytes,

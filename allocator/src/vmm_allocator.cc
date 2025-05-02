@@ -1,3 +1,4 @@
+#include "mpool/vmm_allocator.h"
 #include <boost/interprocess/sync/scoped_lock.hpp>
 #include <filesystem>
 #include <mpool/stats.h>
@@ -41,11 +42,23 @@ VMMAllocator::VMMAllocator(SharedMemory &shared_memory, PagesPool &page_pool,
                      all_block_list_, all_block_map_} {
   LOG_IF(INFO, VERBOSE_LEVEL >= 1)
       << this->config.log_prefix << "Init VMMAllocator";
+  CUDA_CALL(cudaStreamCreate(&zero_filing_stream_));
 };
 
 VMMAllocator::~VMMAllocator() {
   LOG_IF(INFO, VERBOSE_LEVEL >= 1)
       << config.log_prefix << "Release VMMAllocator";
+}
+
+void VMMAllocator::SetZero(MemBlock *block,
+                              cudaStream_t stream) {
+  if (!block || block->nbytes == 0) { return; }
+  CUDA_CALL(cudaMemsetAsync(GetBasePtr(), 0, block->nbytes, stream == nullptr ? 
+  zero_filing_stream_ : stream));
+  if (stream == nullptr) {
+    CUDA_CALL(cudaStreamSynchronize(zero_filing_stream_));
+  }
+  
 }
 
 bool VMMAllocator::CheckStats() {

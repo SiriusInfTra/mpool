@@ -1,3 +1,4 @@
+#include "mpool/vmm_allocator.h"
 #include <boost/interprocess/sync/scoped_lock.hpp>
 #include <mpool/util.h>
 #include <mpool/direct_allocator.h>
@@ -35,59 +36,12 @@ MemBlock *DirectAllocator::Alloc(size_t request_nbytes, size_t alignment,
   }
   request_nbytes = AlignToPages(request_nbytes);
   bip::scoped_lock lock{shared_memory_.GetMutex()};
-  if (request_nbytes < page_pool.config.page_nbytes) {
-    auto *mem_block = global_stream_context_.stream_free_list.PopBlock(
-        process_local_, true, request_nbytes, 0);
-    if (mem_block != nullptr) {
-      CHECK_EQ(mem_block->nbytes, request_nbytes);
-      return mem_block;
-    } else {
-      std::vector<index_t> pages_index;
-      {
-        auto lock = page_pool.Lock();
-        pages_index = page_pool.AllocDisPages(belong, 1, lock);
-      }
-      if (pages_index.empty()) {
-        LOG(WARNING) << config.log_prefix
-                     << "OOM: Cannot find any physical page.";
-        ReportOOM(cuda_stream, OOMReason::NO_PHYSICAL_PAGES, true);
-      }
-      ptrdiff_t addr_offset = pages_index[0] * page_pool.config.page_nbytes;
-      size_t nbytes = page_pool.config.page_nbytes;
-      auto *mem_block = global_stream_context_.stream_free_list.PopBlock(
-          process_local_, false, addr_offset, nbytes);
-      stats.SetBlockIsSmall(mem_block, true);
-      if (request_nbytes < nbytes) {
-        mem_block = global_stream_context_.stream_free_list.PushBlock(process_local_,
-                                                          mem_block);
-        mem_block = global_stream_context_.stream_free_list.PopBlock(
-            process_local_, true, request_nbytes, 0);
-      }
-      CHECK_EQ(mem_block->nbytes, request_nbytes);
-      return mem_block;
-    }
-  } else {
-    size_t pages_cnt = request_nbytes / page_pool.config.page_nbytes;
-    index_t page_begin;
-    {
-      auto lock = page_pool.Lock();
-      page_begin = page_pool.AllocConPages(belong, pages_cnt, lock);
-    }
-    if (page_begin == INVALID_INDEX) {
-      LOG(WARNING)
-          << config.log_prefix
-          << "OOM: Cannot find enough continuous physical pages: require = "
-          << pages_cnt << ".";
-      ReportOOM(cuda_stream, OOMReason::NO_PHYSICAL_PAGES, true);
-      return nullptr;
-    }
-    ptrdiff_t addr_offset = page_begin * page_pool.config.page_nbytes;
-    size_t nbytes = pages_cnt * page_pool.config.page_nbytes;
-    auto *mem_block = global_stream_context_.stream_free_list.PopBlock(
-        process_local_, false, addr_offset, nbytes);
-    CHECK_EQ(mem_block->nbytes, request_nbytes);
-    return mem_block;
+  auto *mem_block = AllocWithLock(request_nbytes, cuda_stream,
+                                  flags & VMMAllocator::ALLOC_TRY_EXPAND_VA, lock);
+  if (flags & VMMAllocator::SKIP_ZERO_FILLING) {
+    SetZero(mem_block, cuda_stream);
   }
+  return mem_block;
 }
 
 void DirectAllocator::Free(const MemBlock *block, size_t flags) {
@@ -203,5 +157,62 @@ void DirectAllocator::ReportOOM(cudaStream_t cuda_stream, OOMReason reason,
 
 void DirectAllocator::DumpStateWithLock() {
   VMMAllocator::DumpState({&global_stream_context_});
+}
+MemBlock *DirectAllocator::AllocWithLock(
+    size_t request_nbytes, cudaStream_t cuda_stream, bool try_expand_VA,
+    const bip::scoped_lock<bip::interprocess_mutex> &lock) {
+  if (request_nbytes < page_pool.config.page_nbytes) {
+    auto *mem_block = global_stream_context_.stream_free_list.PopBlock(
+        process_local_, true, request_nbytes, 0);
+    if (mem_block != nullptr) {
+      CHECK_EQ(mem_block->nbytes, request_nbytes);
+      return mem_block;
+    } else {
+      std::vector<index_t> pages_index;
+      {
+        auto lock = page_pool.Lock();
+        pages_index = page_pool.AllocDisPages(belong, 1, lock);
+      }
+      if (pages_index.empty()) {
+        LOG(WARNING) << config.log_prefix
+                     << "OOM: Cannot find any physical page.";
+        ReportOOM(cuda_stream, OOMReason::NO_PHYSICAL_PAGES, true);
+      }
+      ptrdiff_t addr_offset = pages_index[0] * page_pool.config.page_nbytes;
+      size_t nbytes = page_pool.config.page_nbytes;
+      auto *mem_block = global_stream_context_.stream_free_list.PopBlock(
+          process_local_, false, addr_offset, nbytes);
+      stats.SetBlockIsSmall(mem_block, true);
+      if (request_nbytes < nbytes) {
+        mem_block = global_stream_context_.stream_free_list.PushBlock(
+            process_local_, mem_block);
+        mem_block = global_stream_context_.stream_free_list.PopBlock(
+            process_local_, true, request_nbytes, 0);
+      }
+      CHECK_EQ(mem_block->nbytes, request_nbytes);
+      return mem_block;
+    }
+  } else {
+    size_t pages_cnt = request_nbytes / page_pool.config.page_nbytes;
+    index_t page_begin;
+    {
+      auto lock = page_pool.Lock();
+      page_begin = page_pool.AllocConPages(belong, pages_cnt, lock);
+    }
+    if (page_begin == INVALID_INDEX) {
+      LOG(WARNING)
+          << config.log_prefix
+          << "OOM: Cannot find enough continuous physical pages: require = "
+          << pages_cnt << ".";
+      ReportOOM(cuda_stream, OOMReason::NO_PHYSICAL_PAGES, true);
+      return nullptr;
+    }
+    ptrdiff_t addr_offset = page_begin * page_pool.config.page_nbytes;
+    size_t nbytes = pages_cnt * page_pool.config.page_nbytes;
+    auto *mem_block = global_stream_context_.stream_free_list.PopBlock(
+        process_local_, false, addr_offset, nbytes);
+    CHECK_EQ(mem_block->nbytes, request_nbytes);
+    return mem_block;
+  }
 }
 } // namespace mpool

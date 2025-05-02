@@ -42,13 +42,15 @@ public:
   }
 
   const constexpr static size_t ALLOC_TRY_EXPAND_VA = 1;
-  const constexpr static size_t REALLOC_FALLBACK_MEMCPY = 1;
+  const constexpr static size_t REALLOC_FALLBACK_MEMCPY = 2;
+  const constexpr static size_t SKIP_ZERO_FILLING = 4;
 
 protected:
   SharedMemory &shared_memory_;
   CachingAllocatorStats &stats;
   bip_list<shm_ptr<MemBlock>> &all_block_list_;
   bip_map<ptrdiff_t, shm_ptr<MemBlock>> &all_block_map_;
+  cudaStream_t zero_filing_stream_;
 
 
   StreamContext &global_stream_context_;
@@ -57,6 +59,8 @@ protected:
   std::vector<std::shared_ptr<OOMObserver>> oom_observers_;
 
   bool CheckStats();
+
+  void SetZero(MemBlock *block, cudaStream_t stream);
 
 public:
   VMMAllocator(SharedMemory &shared_memory, PagesPool &page_pool,

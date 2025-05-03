@@ -15,7 +15,7 @@ set(C_MODULE_DEFINITION)
 
 if (ENABLE_TORCH)
   message("PyTorch build is enabled.")
-
+  add_compile_definitions(_GLIBCXX_USE_CXX11_ABI=0)
   set(torch_python_lib)
   foreach(torch_lib IN ITEMS ${TORCH_LIBRARIES})
     if(torch_lib MATCHES ".*torch/lib/libc10.so")

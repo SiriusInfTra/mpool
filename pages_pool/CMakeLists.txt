@@ -22,6 +22,7 @@ target_link_libraries(pages_pool PUBLIC
     CUDA::cuda_driver 
     Threads::Threads 
     glog::glog
+    spdlog::spdlog
     rt 
     spdlog::spdlog
     ${Boost_LIBRARIES}

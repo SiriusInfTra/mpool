@@ -22,9 +22,8 @@ target_link_libraries(pages_pool PUBLIC
     CUDA::cuda_driver 
     Threads::Threads 
     glog::glog
-    spdlog::spdlog
+    spdlog
     rt 
-    spdlog::spdlog
     ${Boost_LIBRARIES}
 )
 target_include_directories(pages_pool PUBLIC include ${Boost_INCLUDE_DIRS})

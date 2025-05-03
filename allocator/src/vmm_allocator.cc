@@ -53,11 +53,20 @@ VMMAllocator::~VMMAllocator() {
 void VMMAllocator::SetZero(MemBlock *block,
                               cudaStream_t stream) {
   if (!block || block->nbytes == 0) { return; }
-  CUDA_CALL(cudaMemsetAsync(GetBasePtr(), 0, block->nbytes, stream == nullptr ? 
-  zero_filing_stream_ : stream));
-  if (stream == nullptr) {
-    CUDA_CALL(cudaStreamSynchronize(zero_filing_stream_));
-  }
+  return;
+  // CUDA_CALL(cudaMemsetAsync(GetBasePtr(), 0, block->nbytes, stream == nullptr ? 
+  // zero_filing_stream_ : stream));
+  // if (stream == nullptr) {
+  //   CUDA_CALL(cudaStreamSynchronize(zero_filing_stream_));
+  // }
+  auto begin = std::chrono::steady_clock::now();
+  CUDA_CALL(cudaMemsetAsync(GetBasePtr() + block->addr_offset, 0, block->nbytes, zero_filing_stream_));
+  CUDA_CALL(cudaStreamSynchronize(zero_filing_stream_));
+  auto dur = std::chrono::steady_clock::now() - begin;
+  auto us = std::chrono::duration_cast<std::chrono::microseconds>(dur).count();
+  LOG_IF(INFO, true)
+      << config.log_prefix << "Zero filling " << block->nbytes
+      << " bytes in " << us << " us";
   
 }
 

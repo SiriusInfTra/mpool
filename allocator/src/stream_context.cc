@@ -36,7 +36,9 @@ MemBlock *StreamBlockList::CreateEntryExpandVA(ProcessLocalData &local,
                    local.mapping_region_->CalculateUnallocFlags(addr_offset, nbytes),
                .device_id = device_id,
                .is_free = false,
-               .is_small = nbytes < small_block_nbytes_};
+               .is_small = nbytes < small_block_nbytes_,
+               .last_belong = -1,
+              };
   shm_ptr handle{block, local.shared_memory_};
   block->iter_all_block_list =
       local.all_block_list_.insert(local.all_block_list_.cend(), handle);
@@ -83,7 +85,9 @@ MemBlock *StreamBlockList::SplitBlock(ProcessLocalData &local,
                    .device_id = origin_entry->device_id,
                    .is_free = origin_entry->is_free,
                    .is_small = origin_entry->is_small,
-                   .ref_count = 0};
+                   .ref_count = 0,
+                   .last_belong = origin_entry->last_belong
+                  };
   shm_ptr insert_after_entry_handle{insert_after_entry, local.shared_memory_};
   insert_after_entry->iter_all_block_list = local.all_block_list_.insert(
       std::next(origin_entry->iter_all_block_list), insert_after_entry_handle);
@@ -117,6 +121,7 @@ MemBlock *StreamBlockList::MergeMemEntry(ProcessLocalData &local,
   CHECK_EQ(first_block->is_small, secound_block->is_small);
   CHECK_EQ(first_block->ref_count, 0);
   CHECK_EQ(secound_block->ref_count, 0);
+  CHECK_EQ(first_block->last_belong, secound_block->last_belong);
 
   first_block->nbytes += secound_block->nbytes;
   if (first_block->unalloc_pages > 0 || secound_block->unalloc_pages > 0) {

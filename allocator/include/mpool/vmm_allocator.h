@@ -29,6 +29,7 @@ struct VMMAllocatorConfig {
   std::string belong_name;
   size_t small_block_nbytes;
   size_t align_nbytes;
+  int belong_id;
 };
 
 class VMMAllocator : public IAllocator {

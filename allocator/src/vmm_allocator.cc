@@ -46,30 +46,71 @@ VMMAllocator::VMMAllocator(SharedMemory &shared_memory, PagesPool &page_pool,
 };
 
 VMMAllocator::~VMMAllocator() {
-  LOG_IF(INFO, VERBOSE_LEVEL >= 1)
-      << config.log_prefix << "Release VMMAllocator";
+  // LOG_IF(INFO, VERBOSE_LEVEL >= 1)
+  //     << config.log_prefix << "Release VMMAllocator";
 }
+
+struct Recorder {
+  const char *name;
+  std::atomic<long> cnt = 0;
+  std::atomic<long> us = 0;
+
+  void inc() {
+    cnt += 1;
+    if (cnt % 1000 == 0) {
+      LOG(INFO) << name << ": " << cnt << " times, " << 1.0 * us / cnt
+                << " us / time";;
+    }
+  }
+
+  ~Recorder() {
+    std::cout << name << ": " << cnt << " times, " << 1.0 * us / cnt << " us / time";
+  }
+};
+static Recorder set_zero_func{"SetZeroFunc"};
+static Recorder fill_zero{"FillZero"};
+static Recorder skip_fill{"SkipFill"};
 
 void VMMAllocator::SetZero(MemBlock *block,
                               cudaStream_t stream) {
   if (!block || block->nbytes == 0) { return; }
   return;
-  if (block->last_belong != -1 && block->last_belong != config.belong_id) {
-    auto begin = std::chrono::steady_clock::now();
-    CUDA_CALL(cudaMemsetAsync(GetBasePtr() + block->addr_offset, 0, block->nbytes, zero_filing_stream_));
-    CUDA_CALL(cudaStreamSynchronize(zero_filing_stream_));
-    auto dur = std::chrono::steady_clock::now() - begin;
-    auto us = std::chrono::duration_cast<std::chrono::microseconds>(dur).count();
-    DLOG(INFO) << config.log_prefix << "Zero filling " << block->nbytes << " bytes in " << us << " us";
-  } else {
-    DLOG(INFO) << "Skip zero filling " << block->nbytes << " bytes";
+  if (stream != nullptr) { return; }
+  auto *mapping_region = process_local_.mapping_region_;
+  auto t0 = std::chrono::steady_clock::now();
+  for (index_t i = mapping_region->ByteOffsetToIndex(block->addr_offset);
+       i < mapping_region->ByteOffsetToIndex(block->addr_offset + block->nbytes + mapping_region->mem_block_nbytes - 1);
+       ++i) {
+    auto page = mapping_region->GetMutableSelfPageTable()[i];
+    
+    if (*page->last_belong != *page->belong && *page->last_belong != page_pool.GetBelongRegistry().GetFreeBelong().GetHandle()) {
+      *page->last_belong = *page->belong;
+      auto begin = std::chrono::steady_clock::now();
+      if (stream != nullptr) {
+        CUDA_CALL(cudaMemsetAsync(GetBasePtr() + i * mapping_region->mem_block_nbytes, 0, mapping_region->mem_block_nbytes, zero_filing_stream_));
+        CUDA_CALL(cudaStreamSynchronize(zero_filing_stream_));
+      }
+
+      auto dur = std::chrono::steady_clock::now() - begin;
+      fill_zero.us += std::chrono::duration_cast<std::chrono::microseconds>(dur).count();
+      fill_zero.inc();
+      // LOG(INFO) << config.log_prefix
+      //   << "SetZero: " << ByteDisplay(mapping_region->mem_block_nbytes)
+      //   << ", stream = " << stream << ", dur_us = " << std::chrono::duration_cast<std::chrono::microseconds>(dur).count();
+    } else {
+      skip_fill.inc();
+      // LOG(INFO) << config.log_prefix
+      //     << "SkipSet: " << ByteDisplay(mapping_region->mem_block_nbytes)
+      //     << ", stream = " << stream;
+    }
   }
-  block->last_belong = config.belong_id;
-  // CUDA_CALL(cudaMemsetAsync(GetBasePtr(), 0, block->nbytes, stream == nullptr ? 
-  // zero_filing_stream_ : stream));
-  // if (stream == nullptr) {
-  //   CUDA_CALL(cudaStreamSynchronize(zero_filing_stream_));
-  // }
+  auto dur2 = std::chrono::steady_clock::now() - t0;
+  set_zero_func.us += std::chrono::duration_cast<std::chrono::microseconds>(dur2).count();
+  set_zero_func.inc();
+  // LOG(INFO) << config.log_prefix
+  //           << "VMMAllocator: " << ByteDisplay(block->nbytes)
+  //           << ", stream = " << stream << ", dur_us = "
+  //           << std::chrono::duration_cast<std::chrono::microseconds>(dur).count();
 
   
 }

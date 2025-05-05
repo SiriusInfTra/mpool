@@ -118,6 +118,7 @@ void PagesPool::FreePages(const std::vector<index_t> &pages, Belong blg,
   for (index_t index : pages) {
     auto &page = phy_pages[index];
     CHECK_EQ(belong_registery_.GetBelong(*page.belong), blg);
+    *page.last_belong = *page.belong;
     *page.belong = belong_registery_.GetFreeBelong();
     free_list_.ReleasePages(index, 1);
   }
@@ -131,7 +132,8 @@ void PagesPool::FreePages(const std::vector<index_t> &pages, Belong blg,
 }
 
 PagesPool::~PagesPool() {
-  LOG(INFO) << config.log_prefix << "Release PagesPool";
+  // LOG(INFO) << config.log_prefix << "Release PagesPool";
+  std::cout << config.log_prefix << "Release PagesPool" << std::endl;
 }
 
 BelongRegistry &PagesPool::GetBelongRegistry() { 

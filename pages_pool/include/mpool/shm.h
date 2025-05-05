@@ -32,11 +32,19 @@ private:
   bip_mutex *mutex_;
   int *ref_count_;
 
-  bool is_init_;
-  bool is_deinit_;
+  bool is_init_ = false;
+  bool is_deinit_ = false;
 
 public:
-  SharedMemory(std::string name, size_t nbytes);
+  SharedMemory(std::string name, size_t nbytes)
+      : name(name), shared_memory(bip::open_or_create, name.c_str(), nbytes),
+        is_init_(false), is_deinit_(false) {
+    auto init_func = [&]() {
+      mutex_ = shared_memory.find_or_construct<bip_mutex>("mutex")();
+      ref_count_ = shared_memory.find_or_construct<int>("ref_count")(0);
+    };
+    shared_memory.atomic_func(init_func);
+  }
 
   bip::managed_shared_memory *operator->() { return &shared_memory; }
 

@@ -51,6 +51,8 @@ public:
     return Get()->pages_num.load(std::memory_order_relaxed);
   }
 
+  shm_ptr<BelongImpl> GetHandle() const { return handle_; }
+
   size_t GetAllocatedNbytes() const {
     return Get()->allocated_nbytes.load(std::memory_order_relaxed);
   }

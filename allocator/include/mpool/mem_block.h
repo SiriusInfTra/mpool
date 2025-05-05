@@ -21,8 +21,6 @@ struct MemBlock {
   bool is_free;
   bool is_small;
   int32_t ref_count;
-  // TODO: Use Belong
-  int last_belong;
 
 
   // For quickly finding adjacent blocks.

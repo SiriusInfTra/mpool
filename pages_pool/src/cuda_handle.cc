@@ -133,6 +133,8 @@ PageHandleTransfer::PageHandleTransfer(SharedMemory &shared_memory,
       page_nbytes_(conf.page_nbytes) {
   shm_belong_list_ =
       shared_memory->find_or_construct<shm_ptr<BelongImpl>>("HT_belong_list")[pages_num_]();
+  last_shm_belong_list_ =
+      shared_memory->find_or_construct<shm_ptr<BelongImpl>>("HT_last_belong_list")[pages_num_]();
   phy_pages_ref_.reserve(pages_num_);
 }
 
@@ -145,6 +147,7 @@ void PageHandleTransfer::InitMaster(Belong kFree) {
   message_queue_.RecordEvent(Event::kMasterChance);
   for (size_t k = 0; k < pages_num_; ++k) {
     shm_belong_list_[k] = kFree;
+    last_shm_belong_list_[k] = kFree;
   }
   CUmemAllocationProp prop = {
       .type = CU_MEM_ALLOCATION_TYPE_PINNED,
@@ -157,7 +160,7 @@ void PageHandleTransfer::InitMaster(Belong kFree) {
   for (index_t index = 0; index < pages_num_; ++index) {
     CU_CALL(cuMemCreate(&cu_handle, page_nbytes_, &prop, 0));
     phy_pages_ref_.push_back(
-        PhyPage{index, cu_handle, &shm_belong_list_[index]});
+        PhyPage{index, cu_handle, &shm_belong_list_[index], &last_shm_belong_list_[index]});
   }
   auto end = std::chrono::steady_clock::now();
   LOG_IF(INFO, VERBOSE_LEVEL >= 1) << log_prefix_ 
@@ -193,7 +196,7 @@ void PageHandleTransfer::InitMirror() {
       close(fd_list[k]);
       index_t index = chunk_begin + k;
       phy_pages_ref_.push_back(
-          PhyPage{index, cu_handle, &shm_belong_list_[index]});
+          PhyPage{index, cu_handle, &shm_belong_list_[index], &last_shm_belong_list_[index]});
     }
 
   }
@@ -243,7 +246,7 @@ void PageHandleTransfer::Run() {
   }
   UnlinkServer(socket_fd);
   message_queue_.RecordEvent(Event::kMasterChance);
-  LOG(INFO) << log_prefix_ << "EXIT!";
+  std::cout << log_prefix_ << "EXIT!" << std::endl;
 }
 
 MessageQueue::MessageQueue(SharedMemory &shared_memory) : is_close(false) {

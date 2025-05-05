@@ -1,5 +1,7 @@
 #pragma once
+#include <glog/logging.h>
 
+#ifdef FORCE_SPDLOG
 #include <ostream>
 #include <spdlog/spdlog.h>
 #include <sstream>
@@ -12,24 +14,32 @@ enum LogSeverity {
 };
 
 namespace __logging_is_spdlog {
-  class LogMessage: public std::stringstream {
-    private:
-     const spdlog::level::level_enum level_;
-     const spdlog::source_loc source_loc_;
-   //   std::stringstream ss_;
+  struct LogMessage: public std::ostream {
+    LogMessage(spdlog::level::level_enum severity, spdlog::source_loc source_loc) {};
+  };
+
+  inline bool NeedLog(LogSeverity severity) {
+    
+  }
+  
+  // class LogMessage: public std::stringstream {
+  //   private:
+  //    const spdlog::level::level_enum level_;
+  //    const spdlog::source_loc source_loc_;
+  //  //   std::stringstream ss_;
    
-    public:
-      LogMessage(spdlog::level::level_enum severity, spdlog::source_loc source_loc) : level_(severity), source_loc_(source_loc) {}
+  //   public:
+  //     LogMessage(spdlog::level::level_enum severity, spdlog::source_loc source_loc) : level_(severity), source_loc_(source_loc) {}
    
-   //   std::ostream &stream() { return ss_; }
+  //  //   std::ostream &stream() { return ss_; }
    
-     ~LogMessage() {
-       if (level_ == spdlog::level::off) {
-         return;
-       }
-       spdlog::default_logger_raw()->log(source_loc_, level_, this->str());
-     }
-   };
+  //    ~LogMessage() {
+  //      if (level_ == spdlog::level::off) {
+  //        return;
+  //      }
+  //      spdlog::default_logger_raw()->log(source_loc_, level_, this->str());
+  //    }
+  //  };
    
 }
 
@@ -41,6 +51,9 @@ namespace __logging_is_spdlog {
 #define SEVERITY_ERROR spdlog::level::err
 #define SEVERITY_FATAL spdlog::level::critical
 
+// #define LOG(severity) void(0)
+// #define LOG_IF(severity, condition) void(0)
+// #define CHECK(condition) void(0)
 #define LOG(severity) __logging_is_spdlog::LogMessage(SEVERITY_##severity, spdlog::source_loc{__FILE__, __LINE__, SPDLOG_FUNCTION})
 #define LOG_IF(severity, condition) \
   __logging_is_spdlog::LogMessage((condition) ? SEVERITY_##severity : SEVERITY_OFF, spdlog::source_loc{__FILE__, __LINE__, SPDLOG_FUNCTION})
@@ -67,7 +80,6 @@ namespace __logging_is_spdlog {
 #define DCHECK_GT CHECK_GT
 
 #else
-
 #define DLOG(severity) __logging_is_spdlog::LogMessage(SEVERITY_OFF, spdlog::source_loc{__FILE__, __LINE__, SPDLOG_FUNCTION})
 #define DLOG_IF(severity, condition) __logging_is_spdlog::LogMessage(SEVERITY_OFF, spdlog::source_loc{__FILE__, __LINE__, SPDLOG_FUNCTION})
 
@@ -80,3 +92,4 @@ namespace __logging_is_spdlog {
 #define DCHECK_GT(val1, val2) __logging_is_spdlog::LogMessage(SEVERITY_OFF, spdlog::source_loc{__FILE__, __LINE__, SPDLOG_FUNCTION})
 #endif
 
+#endif

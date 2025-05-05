@@ -162,6 +162,7 @@ void DirectAllocator::DumpStateWithLock() {
 MemBlock *DirectAllocator::AllocWithLock(
     size_t request_nbytes, cudaStream_t cuda_stream, bool try_expand_VA,
     const bip::scoped_lock<bip::interprocess_mutex> &lock) {
+  CHECK(lock.owns());
   if (request_nbytes < page_pool.config.page_nbytes) {
     auto *mem_block = global_stream_context_.stream_free_list.PopBlock(
         process_local_, true, request_nbytes, 0);

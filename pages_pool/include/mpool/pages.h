@@ -33,6 +33,7 @@ struct PhyPage {
   const size_t index;
   const CUmemGenericAllocationHandle cu_handle;
   shm_ptr<BelongImpl> *const belong;
+  shm_ptr<BelongImpl> *const last_belong;
 };
 
 inline std::ostream &operator<<(std::ostream &out, const PhyPage &page) {

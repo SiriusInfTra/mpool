@@ -57,14 +57,16 @@ struct Recorder {
 
   void inc() {
     cnt += 1;
-    if (cnt % 1000 == 0) {
-      LOG(INFO) << name << ": " << cnt << " times, " << 1.0 * us / cnt
-                << " us / time";;
-    }
+    // if (cnt % 1000 == 0) {
+    //   LOG(INFO) << name << ": " << cnt << " times, " << 1.0 * us / cnt
+    //             << " us / time"
+    //             << std::endl;
+    // }
   }
 
   ~Recorder() {
-    std::cout << name << ": " << cnt << " times, " << 1.0 * us / cnt << " us / time";
+    std::cout << name << ": " << cnt << " times, " << 1.0 * us / cnt << " us / time"
+              << std::endl;
   }
 };
 static Recorder set_zero_func{"SetZeroFunc"};
@@ -74,8 +76,8 @@ static Recorder skip_fill{"SkipFill"};
 void VMMAllocator::SetZero(MemBlock *block,
                               cudaStream_t stream) {
   if (!block || block->nbytes == 0) { return; }
-  return;
-  if (stream != nullptr) { return; }
+  // return;
+  // if (stream != nullptr) { return; }
   auto *mapping_region = process_local_.mapping_region_;
   auto t0 = std::chrono::steady_clock::now();
   for (index_t i = mapping_region->ByteOffsetToIndex(block->addr_offset);
@@ -86,10 +88,8 @@ void VMMAllocator::SetZero(MemBlock *block,
     if (*page->last_belong != *page->belong && *page->last_belong != page_pool.GetBelongRegistry().GetFreeBelong().GetHandle()) {
       *page->last_belong = *page->belong;
       auto begin = std::chrono::steady_clock::now();
-      if (stream != nullptr) {
-        CUDA_CALL(cudaMemsetAsync(GetBasePtr() + i * mapping_region->mem_block_nbytes, 0, mapping_region->mem_block_nbytes, zero_filing_stream_));
-        CUDA_CALL(cudaStreamSynchronize(zero_filing_stream_));
-      }
+      CUDA_CALL(cudaMemsetAsync(GetBasePtr() + i * mapping_region->mem_block_nbytes, 0, mapping_region->mem_block_nbytes, zero_filing_stream_));
+      CUDA_CALL(cudaStreamSynchronize(zero_filing_stream_));
 
       auto dur = std::chrono::steady_clock::now() - begin;
       fill_zero.us += std::chrono::duration_cast<std::chrono::microseconds>(dur).count();

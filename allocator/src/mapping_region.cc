@@ -298,4 +298,11 @@ DynamicMappingRegion::DynamicMappingRegion(
     : IMappingRegion(shared_memory, page_pool, belong, log_prefix,
                      va_range_scale, ReportOOM) {}
 
+std::pair<index_t, index_t>
+IMappingRegion::GetPhysicalPage(const MemBlock *block) {
+  index_t idx_begin = ByteOffsetToIndex(block->addr_offset);
+  index_t idx_end = ByteOffsetToIndex(block->addr_offset + block->nbytes +
+                                       mem_block_nbytes - 1);
+  return {idx_begin, idx_end};
+}
 } // namespace mpool

@@ -173,6 +173,7 @@ MemBlock *CachingAllocator::Alloc(size_t nbytes, size_t alignment,
   CHECK_GT(nbytes_with_alignment, 0ULL);
   auto *mem_block = AllocWithLock(nbytes_with_alignment, cuda_stream,
                        flags & VMMAllocator::ALLOC_TRY_EXPAND_VA, lock);
+  EnsureInit();
   lock.unlock();
   if ((flags & VMMAllocator::SKIP_ZERO_FILLING) == 0) {
     SetZero(mem_block, cuda_stream);

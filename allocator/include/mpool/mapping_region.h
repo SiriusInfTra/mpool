@@ -114,6 +114,8 @@ public:
     return addr_offset / mem_block_nbytes;
   }
 
+  std::pair<index_t, index_t> GetPhysicalPage(const MemBlock *block);
+
   /**
    * @brief Get the base pointer of the mapping region.
    *

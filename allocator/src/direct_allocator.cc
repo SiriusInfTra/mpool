@@ -38,6 +38,7 @@ MemBlock *DirectAllocator::Alloc(size_t request_nbytes, size_t alignment,
   bip::scoped_lock lock{shared_memory_.GetMutex()};
   auto *mem_block = AllocWithLock(request_nbytes, cuda_stream,
                                   flags & VMMAllocator::ALLOC_TRY_EXPAND_VA, lock);
+  EnsureInit();
   lock.unlock();
   if ((flags & VMMAllocator::SKIP_ZERO_FILLING) == 0) {
     SetZero(mem_block, cuda_stream);

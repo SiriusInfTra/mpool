@@ -69,6 +69,7 @@ public:
 
   ~VMMAllocator();
   size_t GetDeviceFreeNbytes() const;
+  void EnsureInit();
 
   virtual StreamContext &GetStreamContext(cudaStream_t cuda_stream,
                                 const bip::scoped_lock<bip_mutex> &lock) = 0;

@@ -55,12 +55,35 @@ PagesPool::PagesPool(SharedMemory &shared_memory, PagesPoolConf conf,
   Initialize(first_init);
 }
 
-index_t PagesPool::AllocConPages(Belong blg, num_t num_req,
+index_t PagesPool::AllocConPages(Belong blg, num_t num_req, 
                                  bip::scoped_lock<bip_mutex> &lock) {
   LOG_IF(INFO, VERBOSE_LEVEL >= 2)
       << "AllocConPages: blg=" << blg << ", num_req=" << num_req << ".";
   CHECK(lock.owns());
   size_t index_begin = free_list_.FindBestFit(num_req);
+  if (index_begin == FreeList::INVALID_POS) {
+    return PagesPool::INSUFFICIENT_PAGE;
+  }
+  free_list_.ClaimPages(index_begin, num_req);
+  for (size_t k = 0; k < num_req; ++k) {
+    auto &phy_page = phy_pages[index_begin + k];
+    CHECK_EQ(belong_registery_.GetFreeBelong(),
+             belong_registery_.GetBelong(*phy_page.belong));
+    *phy_page.belong = blg;
+  }
+
+  blg.Get()->pages_num.fetch_add(num_req, std::memory_order_relaxed);
+  belong_registery_.GetFreeBelong().Get()->pages_num.fetch_sub(
+      num_req, std::memory_order_relaxed);
+  return index_begin;
+}
+
+index_t PagesPool::AllocConPagesAlign(Belong blg, num_t num_req, size_t align,
+                                      bip::scoped_lock<bip_mutex> &lock) {
+  LOG_IF(INFO, VERBOSE_LEVEL >= 2)
+      << "AllocConPages: blg=" << blg << ", num_req=" << num_req << ".";
+  CHECK(lock.owns());
+  size_t index_begin = free_list_.FindBestFitAlign(num_req, align);
   if (index_begin == FreeList::INVALID_POS) {
     return PagesPool::INSUFFICIENT_PAGE;
   }
@@ -148,5 +171,6 @@ void PagesPool::PrintStats() {
     // LOG(INFO) << ""
   }
 }
+
 
 }; // namespace mpool

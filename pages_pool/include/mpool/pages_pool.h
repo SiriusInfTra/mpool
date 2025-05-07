@@ -56,6 +56,9 @@ public:
     
     index_t AllocConPages(Belong blg, num_t num_req, bip::scoped_lock<bip_mutex> &lock);
 
+    index_t AllocConPagesAlign(Belong blg, num_t num_req, size_t align,
+                               bip::scoped_lock<bip_mutex> &lock);
+
     std::vector<index_t> AllocDisPages(Belong blg, num_t num_req, bip::scoped_lock<bip_mutex> &lock);
 
     void FreePages(const std::vector<index_t> &pages, Belong blg, bip::scoped_lock<bip_mutex> &lock);

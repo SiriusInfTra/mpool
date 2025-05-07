@@ -64,14 +64,18 @@ void VMMAllocator::SetZero(MemBlock *block, cudaStream_t stream) {
    ->   | last = Train | ----------> | last = Infer | --------------->
         +--------------+             +--------------+
   */
+  bool zero_filling = false;
   for (index_t i = idx_begin; i < idx_end; ++i) {
     auto page = mapping_region->GetMutableSelfPageTable()[i];
     if (*page->last_belong != *page->belong && *page->last_belong != page_pool.GetBelongRegistry().GetFreeBelong().GetHandle()) {
       *page->last_belong = *page->belong;
       CUDA_CALL(cudaMemsetAsync(GetBasePtr() + i * mapping_region->mem_block_nbytes, 0, 
         mapping_region->mem_block_nbytes, zero_filing_stream_));
-      CUDA_CALL(cudaStreamSynchronize(zero_filing_stream_));
+      zero_filling = true;
     }
+  }
+  if (zero_filling) {
+    CUDA_CALL(cudaStreamSynchronize(zero_filing_stream_));
   }
 }
 

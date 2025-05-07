@@ -31,9 +31,9 @@ MemBlock *DirectAllocator::Alloc(size_t request_nbytes, size_t alignment,
   LOG_IF(INFO, VERBOSE_LEVEL >= 1)
       << "Alloc " << ByteDisplay(request_nbytes) << ", stream = " << cuda_stream
       << ", flags = " << flags << ".";
-  if (request_nbytes >= page_pool.config.page_nbytes) {
-    alignment = std::max(alignment, page_pool.config.page_nbytes);
-  }
+  // if (request_nbytes >= page_pool.config.page_nbytes) {
+  //   alignment = std::max(alignment, page_pool.config.page_nbytes);
+  // }
   // request_nbytes <  page_pool.config.page_nbytes: small pool
   // request_nbytes >= page_pool.config.page_nbytes: large pool
   request_nbytes = AlignToPages(request_nbytes);
@@ -86,7 +86,6 @@ void DirectAllocator::Free(const MemBlock *block, size_t flags) {
     }
 
   } else {
-    CHECK(false);
     block = global_stream_context_.stream_free_list.PushBlock(
         process_local_, const_cast<MemBlock *>(block));
     if (block->nbytes == mapping_region_.mem_block_nbytes) {

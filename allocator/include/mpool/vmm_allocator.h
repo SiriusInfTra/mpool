@@ -51,7 +51,7 @@ protected:
   CachingAllocatorStats &stats;
   bip_list<shm_ptr<MemBlock>> &all_block_list_;
   bip_map<ptrdiff_t, shm_ptr<MemBlock>> &all_block_map_;
-  cudaStream_t zero_filing_stream_;
+  cudaStream_t zero_filling_stream_;
 
 
   StreamContext &global_stream_context_;

@@ -42,7 +42,7 @@ VMMAllocator::VMMAllocator(SharedMemory &shared_memory, PagesPool &page_pool,
                      all_block_list_, all_block_map_} {
   LOG_IF(INFO, VERBOSE_LEVEL >= 1)
       << this->config.log_prefix << "Init VMMAllocator";
-  zero_filling_stream_ = nullptr; // lazy init
+  zero_filing_stream_ = nullptr; // lazy init
 };
 
 VMMAllocator::~VMMAllocator() {
@@ -64,27 +64,18 @@ void VMMAllocator::SetZero(MemBlock *block, cudaStream_t stream) {
    ->   | last = Train | ----------> | last = Infer | --------------->
         +--------------+             +--------------+
   */
-  bool is_zero_filling = false; 
-  for (index_t i = idx_begin; i < idx_end; ) {
-    index_t j = i;
-    do {
-      auto *page = mapping_region->GetMutableSelfPageTable()[j++];
-      if (*page->last_belong == *page->belong ||
-          *page->last_belong == page_pool.GetBelongRegistry().GetFreeBelong().GetHandle()) {
-        break;
-      }
+  bool zero_filling = false;
+  for (index_t i = idx_begin; i < idx_end; ++i) {
+    auto page = mapping_region->GetMutableSelfPageTable()[i];
+    if (*page->last_belong != *page->belong && *page->last_belong != page_pool.GetBelongRegistry().GetFreeBelong().GetHandle()) {
       *page->last_belong = *page->belong;
-    } while (j < idx_end);
-    if (j > i) {
-      CUDA_CALL(cudaMemsetAsync(
-          mapping_region->GetBasePtr() + i * page_pool.config.page_nbytes, 0,
-          (j - i) * page_pool.config.page_nbytes, stream));
-      is_zero_filling = true;
+      CUDA_CALL(cudaMemsetAsync(GetBasePtr() + i * mapping_region->mem_block_nbytes, 0, 
+        mapping_region->mem_block_nbytes, zero_filing_stream_));
+      zero_filling = true;
     }
-    i = j;
   }
-  if (is_zero_filling) {
-    CUDA_CALL(cudaStreamSynchronize(zero_filling_stream_));
+  if (zero_filling) {
+    CUDA_CALL(cudaStreamSynchronize(zero_filing_stream_));
   }
 }
 
@@ -276,14 +267,14 @@ void VMMAllocator::AllocMappingsAndUpdateFlags(MemBlock *block,
   }
 }
 void VMMAllocator::EnsureInit() {
-  if (zero_filling_stream_ == nullptr) {
+  if (zero_filing_stream_ == nullptr) {
     int device;
     CUDA_CALL(cudaGetDevice(&device));
     CUDA_CALL(cudaSetDevice(page_pool.config.device_id));
-    CUDA_CALL(cudaStreamCreateWithFlags(&zero_filling_stream_, cudaStreamNonBlocking));
+    CUDA_CALL(cudaStreamCreateWithFlags(&zero_filing_stream_, cudaStreamNonBlocking));
     CUDA_CALL(cudaSetDevice(device));
     LOG(INFO) << config.log_prefix
-        << "Create zero filing stream: " << zero_filling_stream_ << " in device " << device << " | "  << page_pool.config.device_id;
+        << "Create zero filing stream: " << zero_filing_stream_ << " in device " << device << " | "  << page_pool.config.device_id;
   }
 }
 } // namespace mpool

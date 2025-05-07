@@ -3,6 +3,7 @@
 #include <mpool/mem_block.h>
 
 namespace mpool {
+  const constexpr size_t MPOOL_ALLOW_NULLPTR = 1 << 0;
 
 class IAllocator {
 public:

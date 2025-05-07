@@ -133,6 +133,7 @@ IMappingRegion::IMappingRegion(
             << ", mem_block_num = " << mem_block_num
             << ", va_range_scale = " << va_range_scale << ".";
 }
+
 int DynamicMappingRegion::CalculateUnallocFlags(ptrdiff_t addr_offset,
                                           size_t nbytes) {
   index_t va_range_l_i = ByteOffsetToIndex(addr_offset);
@@ -276,7 +277,7 @@ StaticMappingRegion::StaticMappingRegion(
   }
   CUmemAccessDesc acc_desc = {
       .location = {.type = CU_MEM_LOCATION_TYPE_DEVICE, .id = page_pool_.config.device_id},
-      .flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE};
+      .flags = ENABLE_STRICT_MAPPING ? CU_MEM_ACCESS_FLAGS_PROT_NONE : CU_MEM_ACCESS_FLAGS_PROT_READWRITE};
   CU_CALL(cuMemSetAccess(reinterpret_cast<CUdeviceptr>(base_ptr_), mem_block_nbytes * mem_block_num,
                           &acc_desc, 1));
   for (size_t k = 0; k < mem_block_num; k++) {

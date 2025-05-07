@@ -22,6 +22,8 @@ enum class OOMReason { NO_PHYSICAL_PAGES, NO_VIRTUAL_SPACE, NO_MEMORY_BLOCK };
 
 namespace mpool {
 
+const constexpr bool ENABLE_STRICT_MAPPING = false;
+
 using OOMObserver =
     std::function<void(int device_id, cudaStream_t stream, OOMReason reason)>;
 
@@ -39,7 +41,7 @@ protected:
   std::vector<const PhyPage *> self_page_table_;
   bip_vector<index_t> &shared_global_mappings_;
   PagesPool &page_pool_;
-  std::function<void(int device_id, cudaStream_t cuda_stream, OOMReason reason)>
+  std::function<void(int device_id, cudaStream_t cuda_stream, OOMReason reason)>    
       ReportOOM;
 
 public:

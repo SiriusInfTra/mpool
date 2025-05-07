@@ -50,6 +50,40 @@ public:
         return best_fit_len < INVALID_LEN ? best_fit_pos : INVALID_POS;
     }
 
+    index_t FindBestFitAlign(num_t request_len, size_t alignment) {
+        size_t best_fit_len = INVALID_LEN;
+        size_t best_fit_pos = 0;
+
+        size_t curr_pos = 0;
+        size_t curr_len = 0;
+
+        size_t bitset_len = alloc_bitmap_->size();
+        auto &alloc_bitmap = *alloc_bitmap_;
+        size_t k = 0;
+        while (k < bitset_len) {
+            if (alloc_bitmap[k] == false) { /* curr page is available */
+                curr_len++;
+                k++;
+            } else { /* curr page is not available */
+                if (curr_len == request_len) {
+                    // exactly match and aligned, return
+                    return curr_pos;
+                } else if (curr_len >= request_len && curr_len < best_fit_len) {
+                    best_fit_len = curr_len;
+                    best_fit_pos = curr_pos;
+                }
+                curr_len = 0;
+                k = curr_pos = (k + 1 + (alignment - 1)) / alignment * alignment;
+            }
+        }
+        if (curr_len >= request_len && curr_len < best_fit_len) {
+            best_fit_len = curr_len;
+            best_fit_pos = curr_pos;
+        }
+        return best_fit_len < INVALID_LEN ? best_fit_pos : INVALID_POS;
+    }
+
+
     void ClaimPages(index_t index, num_t len) {
         std::fill(alloc_bitmap_->begin() + index, alloc_bitmap_->begin() + index + len, true);
     }

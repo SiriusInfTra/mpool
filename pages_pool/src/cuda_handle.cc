@@ -153,6 +153,16 @@ void PageHandleTransfer::InitMaster(Belong kFree) {
       .type = CU_MEM_ALLOCATION_TYPE_PINNED,
       .requestedHandleTypes = CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR,
       .location = {.type = CU_MEM_LOCATION_TYPE_DEVICE, .id = device_id_}};
+  {
+    size_t min_granularity = 0, rec_granularity = 0;
+    CU_CALL(cuMemGetAllocationGranularity(&min_granularity, &prop, 
+        CU_MEM_ALLOC_GRANULARITY_MINIMUM));
+    CU_CALL(cuMemGetAllocationGranularity(&rec_granularity, &prop,
+        CU_MEM_ALLOC_GRANULARITY_RECOMMENDED));
+    LOG(INFO) << "Device " << device_id_ << " min_granularity " 
+              << ByteDisplay(min_granularity)
+              << " rec_granularity " << ByteDisplay(rec_granularity);
+  }
   DLOG(INFO) << log_prefix_ << "Allocating " << pages_num_ << " x "
              << ByteDisplay(page_nbytes_) << " block(s) on device " << device_id_;
   CUmemGenericAllocationHandle cu_handle;

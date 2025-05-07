@@ -55,12 +55,12 @@ CachingAllocator::AllocWithContext(size_t nbytes, StreamContext &stream_context,
   bool is_small = nbytes <= config.small_block_nbytes;
   CHECK(CHECK_LEVEL < 2 || CheckStateInternal(lock));
   auto *free_block = stream_context.stream_free_list.PopBlock(
-      process_local_, is_small, nbytes, 50);
+      process_local_, is_small, nbytes, 2000);
   CHECK(CHECK_LEVEL < 2 || CheckStateInternal(lock));
   // LOG(INFO) << free_block << " is small " << is_small;
   if (free_block == nullptr && is_small) {
     free_block = stream_context.stream_free_list.PopBlock(
-        process_local_, false, config.small_block_nbytes, 100);
+        process_local_, false, config.small_block_nbytes, 2000);
     if (free_block != nullptr) {
       stats.SetBlockIsSmall(free_block, true);
       free_block =

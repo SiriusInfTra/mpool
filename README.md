@@ -2,7 +2,7 @@
 
 ## Buld & Install
 ```bash
-git clone git@ipads.se.sjtu.edu.cn:infer-train/mpool.git
+git clone git@github.com:SiriusInfTra/mpool.git
 cd mpool
 pip install -r requirements.txt
 mkdir build
